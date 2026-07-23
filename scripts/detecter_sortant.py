@@ -75,6 +75,6 @@ def detecter_sortant(siret_acheteur: str, code_cpv: str) -> dict:
 
 if __name__ == "__main__":
     import json
-    # Exemple : Ville de Paris, CPV électricité (à ajuster selon ce que tu as observé à l'Étape 1)
-    resultat = detecter_sortant("21750001600019", "45441000")
+    # Exemple : Cour des Comptes, CPV 72220000 (conseil en systèmes informatiques)
+    resultat = detecter_sortant("11000028800016", "72220000")
     print(json.dumps(resultat, indent=2, ensure_ascii=False, default=str))
