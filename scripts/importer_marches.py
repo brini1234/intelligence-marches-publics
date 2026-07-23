@@ -64,7 +64,7 @@ def importer(siret_acheteur: str):
                     ON CONFLICT (siren) DO NOTHING
                 """), {
                     "siren": siren_titulaire,
-                    "denomination": m.get("titulaire_nom", "Inconnu"),
+                    "denomination": m.get("titulaire_nom") or "Inconnu",
                 })
                 connexion.execute(text("""
                     INSERT INTO attributions (uid_marche, siret_titulaire, siren_titulaire)
