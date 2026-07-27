@@ -18,3 +18,9 @@ def test_texte_avec_chiffre_invente_est_rejete():
     resultat = verifier_texte(texte_invente, fiche)
     assert resultat["valide"] is False
     assert "999999999" in resultat["nombres_non_justifies"]
+
+
+def test_verbaliser_gere_absence_de_donnees():
+    fiche = construire_fiche_de_faits("00000000000000", "99999999")
+    texte = verbaliser(fiche)
+    assert "insuffisantes" in texte.lower()    
