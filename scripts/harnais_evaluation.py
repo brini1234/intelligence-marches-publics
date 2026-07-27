@@ -69,6 +69,15 @@ def test_couverture_est_honnete():
     enregistrer("Couverture honnête (pas de 100% trompeur)", ok)
 
 
+def test_bloc_de_decision_respecte_le_format():
+    """Le sujet exige : 10 lignes maximum, avec les 5 éléments requis."""
+    from scripts.bloc_de_decision import construire_bloc_de_decision
+    lignes = construire_bloc_de_decision(ACHETEUR_TEST, CPV_TEST, "COUR DES COMPTES")
+    ok = len(lignes) <= 10
+    enregistrer("Bloc de décision -> 10 lignes maximum respectées", ok, f"{len(lignes)} lignes")
+
+
+
 def cas_non_implementes():
     """
     Pièges du sujet (section 8) qui dépendent des 3 agents, pas encore construits.
@@ -92,6 +101,7 @@ def executer():
     test_anti_hallucination_bloque_un_chiffre_invente()
     test_bloc_de_decision_contient_les_5_elements()
     test_couverture_est_honnete()
+    test_bloc_de_decision_respecte_le_format()
 
     print("\n--- Cas testés et automatisés ---")
     nb_echecs = 0
