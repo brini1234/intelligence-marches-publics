@@ -48,6 +48,7 @@ def detecter_sortant(siret_acheteur: str, code_cpv: str) -> dict:
             "confiance": "aucune",
             "raison": "Aucun marché trouvé pour cet acheteur et ce CPV",
             "marches_support": [],
+            "historique": [],
         }
 
     marche_actuel = resultats[0]
@@ -70,6 +71,14 @@ def detecter_sortant(siret_acheteur: str, code_cpv: str) -> dict:
         "nb_marches_famille": nb_marches_famille,
         "raison": f"{nb_marches_famille} marché(s) observé(s) pour cet acheteur sur ce CPV",
         "marches_support": [r["uid"] for r in resultats],
+        "historique": [
+            {
+                "uid": r["uid"],
+                "denomination": r["denomination"],
+                "montant": float(r["montant"]) if r["montant"] else None,
+            }
+            for r in resultats
+        ],
     }
 
 

@@ -13,11 +13,20 @@ def extraire_valeurs_autorisees(fiche: dict) -> set[str]:
     """
     autorisees = set()
     for fait in fiche.get("faits", []):
-        valeur = str(fait["valeur"])
-        autorisees.add(valeur)
-        # On ajoute aussi chaque nombre trouvé dans la valeur (utile pour les dates, ex: "2026-07-21")
-        autorisees.update(extraire_nombres(valeur))
-    # Le pourcentage de couverture est aussi une valeur légitime à apparaître
+        valeur = fait["valeur"]
+        # Une valeur peut être une liste (ex: concurrents_observes) : on traite chaque élément
+        valeurs_a_traiter = valeur if isinstance(valeur, list) else [valeur]
+
+        for v in valeurs_a_traiter:
+            v_str = str(v)
+            autorisees.add(v_str)
+            autorisees.update(extraire_nombres(v_str))
+
+            # Si c'est un nombre à virgule, on ajoute aussi sa version arrondie
+            # (ex: 43080.0 -> "43080", car le texte peut l'afficher sans décimale)
+            if isinstance(v, (int, float)):
+                autorisees.add(str(int(v)))
+
     couverture_pct = str(round(fiche.get("couverture_globale", 0) * 100))
     autorisees.add(couverture_pct)
     return autorisees

@@ -9,12 +9,18 @@ def verbaliser(fiche: dict) -> str:
     valeurs = {f["cle"]: f["valeur"] for f in fiche["faits"]}
     couverture = fiche["couverture_globale"]
 
+    concurrents = valeurs["concurrents_observes"]
+    concurrents_txt = ", ".join(concurrents) if isinstance(concurrents, list) else concurrents
+
     texte = (
-        f"Titulaire actuel probable : {valeurs['titulaire_actuel']}. "
-        f"Dernier marché notifié le {valeurs['date_dernier_marche']}, "
-        f"avec environ {valeurs['duree_restante_mois']} mois restants avant échéance. "
-        f"Cette estimation s'appuie sur {valeurs['nombre_marches_historique']} marché(s) "
-        f"similaire(s) observé(s) pour cet acheteur (couverture : {couverture:.0%})."
+        f"Titulaire actuel probable : {valeurs['titulaire_actuel']} "
+        f"(dernier marché notifié le {valeurs['date_dernier_marche']}, "
+        f"~{valeurs['duree_restante_mois']} mois restants). "
+        f"Concurrents observés : {concurrents_txt}. "
+        f"Fourchette de prix constatée : {valeurs['fourchette_prix_min']:.0f} € à {valeurs['fourchette_prix_max']:.0f} €. "
+        f"Pondération de l'acheteur : {valeurs['ponderation_acheteur']}. "
+        f"Basé sur {valeurs['nombre_marches_historique']} marché(s) similaire(s) "
+        f"(couverture globale : {couverture:.0%})."
     )
     return texte
 

@@ -23,4 +23,14 @@ def test_texte_avec_chiffre_invente_est_rejete():
 def test_verbaliser_gere_absence_de_donnees():
     fiche = construire_fiche_de_faits("00000000000000", "99999999")
     texte = verbaliser(fiche)
-    assert "insuffisantes" in texte.lower()    
+    assert "insuffisantes" in texte.lower()
+
+
+def test_fiche_contient_les_5_elements_du_bloc_de_decision():
+    fiche = construire_fiche_de_faits("11000028800016", "72220000")
+    cles = [f["cle"] for f in fiche["faits"]]
+    assert "titulaire_actuel" in cles
+    assert "concurrents_observes" in cles
+    assert "fourchette_prix_min" in cles
+    assert "fourchette_prix_max" in cles
+    assert "ponderation_acheteur" in cles
