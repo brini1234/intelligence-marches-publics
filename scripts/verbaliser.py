@@ -12,14 +12,24 @@ def verbaliser(fiche: dict) -> str:
     concurrents = valeurs["concurrents_observes"]
     concurrents_txt = ", ".join(concurrents) if isinstance(concurrents, list) else concurrents
 
+    # Formulation conforme au sujet (section 2) : jamais "Prix du marché : X EUR"
+    # (faux, ponctuel), toujours une fourchette avec taille d'échantillon et la
+    # mention "indicatif" — un prix constaté sur d'autres marchés n'est jamais
+    # une prédiction du prix futur.
+    n = valeurs["nombre_marches_historique"]
+    fourchette_txt = (
+        f"{valeurs['fourchette_prix_min']:.0f} € à {valeurs['fourchette_prix_max']:.0f} € "
+        f"(n={n}, indicatif)"
+    )
+
     texte = (
         f"Titulaire actuel probable : {valeurs['titulaire_actuel']} "
         f"(dernier marché notifié le {valeurs['date_dernier_marche']}, "
         f"~{valeurs['duree_restante_mois']} mois restants). "
         f"Concurrents observés : {concurrents_txt}. "
-        f"Fourchette de prix constatée : {valeurs['fourchette_prix_min']:.0f} € à {valeurs['fourchette_prix_max']:.0f} €. "
+        f"Fourchette de prix constatée : {fourchette_txt}. "
         f"Pondération de l'acheteur : {valeurs['ponderation_acheteur']}. "
-        f"Basé sur {valeurs['nombre_marches_historique']} marché(s) similaire(s) "
+        f"Basé sur {n} marché(s) similaire(s) "
         f"(couverture globale : {couverture:.0%})."
     )
     return texte

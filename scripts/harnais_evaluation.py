@@ -1,10 +1,13 @@
 import sys
 sys.path.append(".")
 
+from sqlalchemy import text
+
 from scripts.detecter_sortant import detecter_sortant
 from scripts.fiche_de_faits import construire_fiche_de_faits
 from scripts.verbaliser import verbaliser
 from scripts.verification_mecanique import verifier_texte
+from db.connection import get_engine
 
 # Exemple riche connu, utilisé pour les vérifications qui ont besoin de vraies données
 ACHETEUR_TEST = "11000028800016"  # Cour des Comptes
@@ -77,6 +80,73 @@ def test_bloc_de_decision_respecte_le_format():
     enregistrer("Bloc de décision -> 10 lignes maximum respectées", ok, f"{len(lignes)} lignes")
 
 
+def _trouver_cas_avec_concurrent_hors_france() -> tuple[str, str] | None:
+    """
+    Découvre dynamiquement un (acheteur, cpv) réel dont l'historique contient
+    au moins un concurrent marqué ETRANGER. Ne jamais coder en dur un cas
+    précis ici : les données évoluent, le test doit rester vrai à chaque
+    exécution plutôt que de dépendre d'un exemple figé.
+    """
+    engine = get_engine()
+    with engine.connect() as connexion:
+        ligne = connexion.execute(text("""
+            SELECT m.siret_acheteur, m.code_cpv
+            FROM marches m
+            JOIN attributions a ON a.uid_marche = m.uid
+            JOIN entreprises e ON e.siren = a.siren_titulaire
+            WHERE e.etat_administratif = 'ETRANGER'
+            GROUP BY m.siret_acheteur, m.code_cpv
+            HAVING COUNT(*) < (
+                SELECT COUNT(*) FROM marches m2
+                WHERE m2.siret_acheteur = m.siret_acheteur AND m2.code_cpv = m.code_cpv
+            )
+            LIMIT 1
+        """)).fetchone()
+    return (ligne[0], ligne[1]) if ligne else None
+
+
+def test_concurrent_hors_france_degrade_et_declare():
+    """
+    Piège du sujet (section 8) : un concurrent hors France doit dégrader le
+    score de confiance ET être explicitement déclaré dans le texte, jamais
+    silencieusement ignoré ni silencieusement fusionné avec les concurrents
+    français.
+    """
+    cas = _trouver_cas_avec_concurrent_hors_france()
+    if cas is None:
+        enregistrer(
+            "Concurrent hors France -> dégradation + déclaration",
+            True,
+            "SKIP : aucun cas réel avec concurrent hors France comme simple concurrent "
+            "(par opposition à sortant) dans les données actuelles — test repassera "
+            "automatiquement dès qu'un tel cas apparaîtra en base.",
+        )
+        return
+
+    siret_acheteur, code_cpv = cas
+    fiche = construire_fiche_de_faits(siret_acheteur, code_cpv)
+    concurrents_fait = next((f for f in fiche["faits"] if f["cle"] == "concurrents_observes"), None)
+    nb_hors_france_fait = next((f for f in fiche["faits"] if f["cle"] == "nb_concurrents_hors_france"), None)
+
+    declare = (
+        concurrents_fait is not None
+        and isinstance(concurrents_fait["valeur"], list)
+        and any("[hors France]" in c for c in concurrents_fait["valeur"])
+    )
+    degrade = (
+        concurrents_fait is not None
+        and concurrents_fait["couverture"] <= 0.33
+    )
+    compte = nb_hors_france_fait is not None and nb_hors_france_fait["valeur"] > 0
+
+    ok = declare and degrade and compte
+    enregistrer(
+        "Concurrent hors France -> dégradation + déclaration",
+        ok,
+        f"déclaré={declare}, dégradé={degrade} (couverture={concurrents_fait['couverture'] if concurrents_fait else None}), "
+        f"compté={compte}",
+    )
+
 
 def cas_non_implementes():
     """
@@ -87,7 +157,6 @@ def cas_non_implementes():
         "Marché passé par une centrale d'achat -> limite de couverture signalée",
         "CPV mal saisi -> complété par similarité (rapprochement vectoriel)",
         "Changement de raison sociale -> résolution correcte ou doute signalé",
-        "Concurrent hors France -> score de confiance dégradé et déclaré",
     ]
 
 
@@ -102,13 +171,14 @@ def executer():
     test_bloc_de_decision_contient_les_5_elements()
     test_couverture_est_honnete()
     test_bloc_de_decision_respecte_le_format()
+    test_concurrent_hors_france_degrade_et_declare()
 
     print("\n--- Cas testés et automatisés ---")
     nb_echecs = 0
     for r in resultats:
         statut = "✅ PASS" if r["succes"] else "❌ FAIL"
         print(f"{statut} — {r['nom']}")
-        if not r["succes"] and r["detail"]:
+        if r["detail"]:
             print(f"         détail : {r['detail']}")
         if not r["succes"]:
             nb_echecs += 1

@@ -10,6 +10,13 @@ SCORES_COUVERTURE = {
     "aucune": 0.0,
 }
 
+# Piège du sujet (section 8) : "Concurrent hors France -> score de confiance
+# dégradé et déclaré". Un concurrent hors France ne peut pas être vérifié via
+# le référentiel SIRENE (identité, activité, existence légale) : sa présence
+# dégrade donc la confiance qu'on peut avoir sur la liste des concurrents,
+# même si le sortant lui-même reste bien identifié.
+COUVERTURE_MAX_SI_CONCURRENT_ETRANGER = 0.33  # plafonnée à "faible", jamais mieux
+
 
 def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
     """
@@ -29,17 +36,33 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
 
     historique = resultat["historique"]
 
-    # Concurrents observés : les autres entreprises de la même famille de marchés,
-    # hors le sortant actuel, sans doublon, dans l'ordre d'apparition
+    # Concurrents observés : les autres entreprises de la même famille de
+    # marchés, hors le sortant actuel, sans doublon, dans l'ordre d'apparition.
+    # Les concurrents hors France sont explicitement étiquetés dans leur nom
+    # (déclaration visible dans le texte final, pas seulement dans un champ
+    # technique que personne ne lit).
     concurrents = []
+    nb_concurrents_hors_france = 0
     for h in historique[1:]:
-        if h["denomination"] not in concurrents and h["denomination"] != resultat["sortant_probable"]:
+        if h["denomination"] in concurrents or h["denomination"] == resultat["sortant_probable"]:
+            continue
+        if h.get("etat_administratif") == "ETRANGER":
+            concurrents.append(f"{h['denomination']} [hors France]")
+            nb_concurrents_hors_france += 1
+        else:
             concurrents.append(h["denomination"])
 
     # Fourchette de prix observée sur toute la famille de marchés
     montants = [h["montant"] for h in historique if h["montant"] is not None]
     prix_min = min(montants) if montants else None
     prix_max = max(montants) if montants else None
+
+    # Couverture du fait "concurrents_observes" : dégradée si au moins un
+    # concurrent hors France est présent, car son identité/activité n'a pas
+    # pu être vérifiée via SIRENE (référentiel France uniquement).
+    couverture_concurrents = score if resultat["nb_marches_famille"] > 1 else 0.0
+    if nb_concurrents_hors_france > 0:
+        couverture_concurrents = min(couverture_concurrents, COUVERTURE_MAX_SI_CONCURRENT_ETRANGER)
 
     faits = [
         {
@@ -70,8 +93,7 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
             "cle": "concurrents_observes",
             "valeur": concurrents if concurrents else "aucun autre concurrent observé",
             "provenance": "table attributions, entreprises distinctes hors sortant sur la même famille CPV",
-            # Couverture réduite si un seul marché observé au total (pas de vrai historique concurrentiel)
-            "couverture": score if resultat["nb_marches_famille"] > 1 else 0.0,
+            "couverture": couverture_concurrents,
         },
         {
             "cle": "fourchette_prix_min",
@@ -93,7 +115,19 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
         },
     ]
 
-    # Couverture globale : moyenne des couvertures de tous les faits (honnête, pas juste le meilleur cas)
+    # Fait explicite (compté, jamais approximé) pour la déclaration exigée par
+    # le sujet et pour que le harnais puisse vérifier automatiquement que le
+    # piège est bien couvert, sans avoir à parser le texte du concurrent.
+    if nb_concurrents_hors_france > 0:
+        faits.append({
+            "cle": "nb_concurrents_hors_france",
+            "valeur": nb_concurrents_hors_france,
+            "provenance": "table entreprises, champ etat_administratif = 'ETRANGER'",
+            "couverture": 1.0,  # fait certain : soit on l'a compté, soit il n'existe pas
+        })
+
+    # Couverture globale : moyenne des couvertures de tous les faits (honnête,
+    # pas juste le meilleur cas)
     couverture_globale = sum(f["couverture"] for f in faits) / len(faits)
 
     return {

@@ -28,6 +28,7 @@ def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur
 
     prix_min = valeurs["fourchette_prix_min"]["valeur"]
     prix_max = valeurs["fourchette_prix_max"]["valeur"]
+    n = valeurs["nombre_marches_historique"]["valeur"]
 
     lignes = [
         f"Acheteur : {nom_acheteur or siret_acheteur} | Objet CPV : {code_cpv}",
@@ -35,7 +36,8 @@ def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur
         f"Échéance estimée : ~{valeurs['duree_restante_mois']['valeur']} mois restants "
         f"(dernier marché: {valeurs['date_dernier_marche']['valeur']})",
         f"Concurrents observés : {concurrents_txt} (couverture: {pct('concurrents_observes')})",
-        f"Fourchette de prix : {prix_min:,.0f} € — {prix_max:,.0f} € (couverture: {pct('fourchette_prix_min')})",
+        f"Fourchette de prix : {prix_min:,.0f} € — {prix_max:,.0f} € (n={n}, indicatif) "
+        f"(couverture: {pct('fourchette_prix_min')})",
         f"Pondération de l'acheteur : {valeurs['ponderation_acheteur']['valeur']} "
         f"(couverture: {pct('ponderation_acheteur')})",
         f"Historique : {valeurs['nombre_marches_historique']['valeur']} marché(s) similaire(s) observé(s)",
