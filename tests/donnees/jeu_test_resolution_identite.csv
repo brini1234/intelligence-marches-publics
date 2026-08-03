@@ -1,0 +1,40 @@
+identifiant_brut,nom_brut,siret_attendu,siren_attendu,type_cas,commentaire
+444 495 774 00531,,44449577400531,444495774,niveau2_espaces,SIRET reel (bronze_ted_notices) avec espaces internes
+SIRET : 479 766 842 00724,,47976684200724,479766842,niveau2_prefixe,SIRET reel avec prefixe label et espaces
+"49337893900166 , 41859545000168, 31506794200088",,49337893900166,493378939,niveau2_multivaleurs,"champ reel avec 3 SIRET concatenes (co-traitance cachee) - premiere valeur attendue, les 2 autres doivent aussi etre extraites (verifie separement dans les tests unitaires)"
+378615363,,37861536300322,378615363,niveau2_siren_seul,SIREN reel (9 chiffres, sans etablissement) resolu vers le SIRET du siege
+FR85479766842,CAPGEMINI TECHNOLOGY SERVICES,47976684200724,479766842,niveau2_tva_fr,TVA intracommunautaire francaise reelle (bronze_ted_notices)
+ESB67590687,,,,niveau2_etranger,TVA espagnole reelle - doit etre declaree ETRANGER jamais resolue vers un SIREN francais
+LU15001853,,,,niveau2_etranger,TVA luxembourgeoise reelle - meme principe
+1768215-1-1-1,CAPGEMINI TECHNOLOGY SERVICES,47976684200724,479766842,niveau3_flou,identifiant interne TED reel sans structure exploitable - seul le rapprochement flou sur le nom peut resoudre
+,AXANDE,,450813100,niveau3_flou,nom brut identique a la denomination SIRENE - verifie unique (pas d'homonyme)
+,CAPSIDE,,788662831,niveau3_flou,nom brut identique - verifie unique
+,STOR SYSTEMES,,429956931,niveau3_flou,nom brut identique - verifie unique
+,SASETY,,894863018,niveau3_flou,nom brut identique - verifie unique
+,ARTSOFT,,401933510,niveau3_flou,nom brut identique - verifie unique
+,PLUG & SPRINT,,904783065,niveau3_flou,nom brut identique - verifie unique
+,RESOCITY,,810313023,niveau3_flou,nom brut identique - verifie unique
+,FOURNEL THOMAS ARCHITECTURE,,791517345,niveau3_flou,nom brut identique - verifie unique
+,SMART ORIGIN,,792474421,niveau3_flou,nom brut identique - verifie unique
+,AXA CLIMATE,,493363378,niveau3_flou,nom brut identique - verifie unique
+,SYNACKTIV,,750913634,niveau3_flou,nom brut identique - verifie unique
+,ADENTIS,,433242351,niveau3_flou,nom brut identique - verifie unique
+,MUSIC CARE,,505386425,niveau3_flou,nom brut identique - verifie unique
+,CARTOPHYL,,752381509,niveau3_flou,nom brut identique - verifie unique
+,SOPRA STERIA GROUP,,326820065,niveau3_flou,nom brut identique - verifie unique malgre la notoriete du groupe
+,BREDEA INFORMATIQUE,,408028777,niveau3_flou,nom brut identique - verifie unique
+,IORGA GROUP,,423010784,niveau3_flou,nom brut identique - verifie unique
+,SANTERNE NORD PICARDIE INFRA (CITEOS),,528932627,niveau3_flou_parenthese,nom brut avec suffixe entre parentheses (marque commerciale) - SIRENE sans le suffixe
+,POLYMORPH SOFTWARE (POLYMORPH),,440695294,niveau3_flou_parenthese,nom brut avec parenthese - SIRENE sans le suffixe
+,SARL PORTOBELLO COMUNICATION,,513290627,niveau3_flou_forme_juridique,forme juridique dans le nom brut - SIRENE sans SARL
+,ACTIMAGE CONSULTING SAS,,479557894,niveau3_flou_forme_juridique,forme juridique dans le nom brut - SIRENE sans SAS
+,SOPRA STERIA GROUP SA,,326820065,niveau3_flou_forme_juridique_construit,variante construite a la main (forme juridique ajoutee) pour tester le retrait des formes juridiques
+,ARTSOFT SARL,,401933510,niveau3_flou_forme_juridique_construit,variante construite a la main
+,SMILE,,378615363,niveau3_flou_ambigu,"112 entreprises partagent exactement cette denomination en France (verifie) - homonymie non resoluble par le nom seul, echec probable attendu et assume"
+,BELHARRA,,489218933,niveau3_flou_ambigu,"42 entreprises partagent exactement cette denomination (verifie)"
+,DOUBLET,,330542325,niveau3_flou_ambigu,"7 entreprises partagent exactement cette denomination (verifie)"
+,GEXPERTISE,,508008984,niveau3_flou_ambigu,"2 entreprises partagent exactement cette denomination (verifie)"
+,AYALINE,,403104813,niveau3_flou_ambigu,"2 entreprises partagent exactement cette denomination (verifie)"
+,IDA CONCEPT,,950575456,niveau3_flou_ambigu,"2 entreprises partagent exactement cette denomination (verifie)"
+,LILIAN ABRAHAM,,478012313,impossible_par_nom,"entrepreneur individuel - denominationUniteLegale vide en SIRENE stock (verifie) - echec honnetement attendu"
+,ENTREPRISE COMPLETEMENT INVENTEE XYZ123,,,impossible,aucune entreprise de ce nom en France - doit renvoyer aucun resultat plutot qu'un faux positif force

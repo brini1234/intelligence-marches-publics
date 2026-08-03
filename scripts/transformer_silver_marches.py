@@ -1,5 +1,6 @@
 """
-Transformation BRONZE -> SILVER (sujet, section 6, S2 : "déduplication").
+Transformation BRONZE -> SILVER (sujet, section 6, S2 : "déduplication" ;
+section 5 : hiérarchie de résolution d'identité).
 
 Reconstruit intégralement silver_marches et silver_attributions (TRUNCATE +
 repeuplement) depuis bronze_decp_marches / bronze_ted_notices.
@@ -38,6 +39,80 @@ sys.path.append(".")
 from sqlalchemy import text
 
 from db.connection import get_engine
+from scripts.resolution_identite import resoudre
+
+
+def _resoudre_acheteurs_niveaux_2_3(connexion) -> int:
+    """
+    Niveaux 2/3 de la hiérarchie de résolution d'identité (sujet section 5),
+    appliqués aux acheteurs dont l'identifiant brut a échoué au niveau 1
+    (siret_acheteur encore NULL en silver_marches à ce stade). Ne touche
+    jamais une ligne déjà résolue au niveau 1.
+    """
+    lignes = connexion.execute(text(r"""
+        SELECT uid, acheteur_id AS identifiant_brut, acheteur_nom AS nom_brut
+        FROM bronze_decp_marches
+        WHERE acheteur_id IS NOT NULL AND acheteur_id !~ '^\d{14}$'
+          AND uid IN (SELECT uid FROM silver_marches WHERE source = 'DECP' AND siret_acheteur IS NULL)
+        UNION
+        SELECT 'TED-' || publication_number, buyer_identifier, buyer_name
+        FROM bronze_ted_notices
+        WHERE buyer_identifier IS NOT NULL AND buyer_identifier !~ '^\d{14}$'
+          AND ('TED-' || publication_number) IN (
+              SELECT uid FROM silver_marches WHERE source = 'TED' AND siret_acheteur IS NULL
+          )
+    """)).fetchall()
+
+    nb_resolus = 0
+    for uid, identifiant_brut, nom_brut in lignes:
+        resultats = resoudre(identifiant_brut, nom_brut, connexion)
+        if not resultats:
+            continue
+        r = resultats[0]  # un seul acheteur par marché : premier résultat retenu
+        resultat_maj = connexion.execute(text("""
+            UPDATE silver_marches
+            SET siret_acheteur = :siret, nom_acheteur = COALESCE(nom_acheteur, :nom),
+                methode_resolution_acheteur = :methode, score_confiance_acheteur = :score
+            WHERE uid = :uid AND siret_acheteur IS NULL
+        """), {
+            "siret": r["siret"], "nom": nom_brut, "methode": r["methode"],
+            "score": r.get("score_confiance"), "uid": uid,
+        })
+        nb_resolus += resultat_maj.rowcount
+    return nb_resolus
+
+
+def _resoudre_titulaires_niveaux_2_3(connexion) -> int:
+    """Même principe que ci-dessus, côté titulaires. Un identifiant brut
+    peut produire plusieurs résultats (champ multi-valeurs : co-traitance
+    concaténée dans une seule chaîne) -> plusieurs lignes silver_attributions."""
+    lignes = connexion.execute(text(r"""
+        SELECT DISTINCT uid, titulaire_id AS identifiant_brut, titulaire_nom AS nom_brut, 'DECP' AS source
+        FROM bronze_decp_marches
+        WHERE titulaire_id IS NOT NULL AND titulaire_id !~ '^\d{14}$'
+          AND titulaire_nom IS NOT NULL AND titulaire_nom <> ''
+          AND uid IN (SELECT uid FROM silver_marches WHERE source = 'DECP')
+        UNION
+        SELECT DISTINCT 'TED-' || publication_number, winner_identifier, winner_name, 'TED'
+        FROM bronze_ted_notices
+        WHERE winner_identifier IS NOT NULL AND winner_identifier !~ '^\d{14}$'
+          AND winner_name IS NOT NULL
+          AND ('TED-' || publication_number) IN (SELECT uid FROM silver_marches WHERE source = 'TED')
+    """)).fetchall()
+
+    nb_resolus = 0
+    for uid, identifiant_brut, nom_brut, source in lignes:
+        for r in resoudre(identifiant_brut, nom_brut, connexion):
+            resultat = connexion.execute(text("""
+                INSERT INTO silver_attributions (uid, siret_titulaire, nom_titulaire, source, methode_resolution, score_confiance)
+                VALUES (:uid, :siret, :nom, :source, :methode, :score)
+                ON CONFLICT (uid, siret_titulaire) DO NOTHING
+            """), {
+                "uid": uid, "siret": r["siret"], "nom": nom_brut, "source": source,
+                "methode": r["methode"], "score": r.get("score_confiance"),
+            })
+            nb_resolus += resultat.rowcount
+    return nb_resolus
 
 
 def transformer_silver_marches():
@@ -119,6 +194,14 @@ def transformer_silver_marches():
             ON CONFLICT (uid, siret_titulaire) DO NOTHING
         """))
 
+        print("  Résolution d'identité niveaux 2/3 (acheteurs) — normalisation puis rapprochement flou ...")
+        nb_acheteurs_resolus = _resoudre_acheteurs_niveaux_2_3(connexion)
+        print(f"    {nb_acheteurs_resolus} acheteur(s) supplémentaire(s) résolu(s)")
+
+        print("  Résolution d'identité niveaux 2/3 (titulaires) — normalisation puis rapprochement flou ...")
+        nb_titulaires_resolus = _resoudre_titulaires_niveaux_2_3(connexion)
+        print(f"    {nb_titulaires_resolus} couple(s) marché/titulaire supplémentaire(s) résolu(s)")
+
         print("  Détection des doublons probables inter-sources (DECP/TED) ...")
         resultat_doublons = connexion.execute(text("""
             UPDATE silver_marches ted
@@ -145,6 +228,14 @@ def transformer_silver_marches():
             "SELECT COUNT(*) FROM silver_marches WHERE siret_acheteur IS NULL"
         )).scalar()
         nb_attributions = connexion.execute(text("SELECT COUNT(*) FROM silver_attributions")).scalar()
+        repartition_methode_acheteur = connexion.execute(text("""
+            SELECT COALESCE(methode_resolution_acheteur, 'siret_exact'), COUNT(*)
+            FROM silver_marches WHERE siret_acheteur IS NOT NULL
+            GROUP BY 1 ORDER BY 2 DESC
+        """)).fetchall()
+        repartition_methode_titulaire = connexion.execute(text("""
+            SELECT methode_resolution, COUNT(*) FROM silver_attributions GROUP BY 1 ORDER BY 2 DESC
+        """)).fetchall()
 
     print(f"\n✅ Transformation silver terminée.")
     print(f"  silver_marches : {nb_total} ligne(s) ({nb_decp} DECP, {nb_ted} TED), "
@@ -152,8 +243,10 @@ def transformer_silver_marches():
     print(f"  silver_attributions : {nb_attributions} couple(s) marché/titulaire distinct(s)")
     print(f"  {resultat_doublons.rowcount} doublon(s) probable(s) inter-sources flagué(s) "
           f"(non supprimés, exclus de gold uniquement)")
-    print(f"  {nb_sans_acheteur} marché(s) sans SIRET acheteur valide "
+    print(f"  {nb_sans_acheteur} marché(s) toujours sans SIRET acheteur valide "
           f"(conservé(s) en silver pour audit, exclu(s) de gold)")
+    print(f"  Méthode de résolution acheteurs : {dict(repartition_methode_acheteur)}")
+    print(f"  Méthode de résolution titulaires : {dict(repartition_methode_titulaire)}")
 
 
 if __name__ == "__main__":

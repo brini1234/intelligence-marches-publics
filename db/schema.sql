@@ -1,3 +1,7 @@
+-- pg_trgm : nécessaire au rapprochement flou (niveau 3 de la hiérarchie de
+-- résolution d'identité, sujet section 5) via la fonction similarity().
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- =====================================================================
 -- Architecture bronze / silver / gold (sujet, section 6, S2 : "Ingestion
 -- TED et DECP sur CPV restreint, couches bronze/silver/gold, déduplication,
@@ -85,21 +89,29 @@ CREATE INDEX idx_bronze_ted_notices_uid ON bronze_ted_notices(publication_number
 -- objet, montant, dates, CPV) : un marché (accord-cadre notamment) peut
 -- avoir plusieurs titulaires, portés séparément par silver_attributions
 -- ci-dessous — les fusionner ici ferait disparaître des concurrents réels.
+-- methode_resolution_acheteur : 'siret_exact' (niveau 1), ou une des
+-- règles de normalisation niveau 2 ('espaces', 'siren_siege', 'tva_fr',
+-- 'prefixe'), ou 'flou' (niveau 3, pg_trgm) — cf. scripts/resolution_identite.py.
+-- score_confiance_acheteur : NULL pour niveau 1/2 (certain par construction),
+-- score de similarité (0-1) pour le niveau 3 (jamais confondu avec un
+-- résultat certain — sujet section 8 : "doute signalé", pas masqué).
 CREATE TABLE silver_marches (
-    uid                     TEXT PRIMARY KEY,
-    source                  TEXT NOT NULL,
-    siret_acheteur          CHAR(14),
-    nom_acheteur            TEXT,
-    objet                   TEXT,
-    montant                 NUMERIC,
-    code_cpv                VARCHAR(20),
-    date_notification       DATE,
-    date_publication        DATE,
-    duree_mois              NUMERIC,
-    duree_restante_mois     NUMERIC,
-    modification_id         INTEGER,
-    doublon_probable_de     TEXT REFERENCES silver_marches(uid),
-    date_transformation     TIMESTAMP DEFAULT NOW()
+    uid                          TEXT PRIMARY KEY,
+    source                       TEXT NOT NULL,
+    siret_acheteur               CHAR(14),
+    nom_acheteur                 TEXT,
+    methode_resolution_acheteur  TEXT,
+    score_confiance_acheteur     NUMERIC,
+    objet                        TEXT,
+    montant                      NUMERIC,
+    code_cpv                     VARCHAR(20),
+    date_notification            DATE,
+    date_publication              DATE,
+    duree_mois                    NUMERIC,
+    duree_restante_mois          NUMERIC,
+    modification_id              INTEGER,
+    doublon_probable_de          TEXT REFERENCES silver_marches(uid),
+    date_transformation          TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_silver_marches_acheteur ON silver_marches(siret_acheteur);
@@ -112,11 +124,15 @@ CREATE INDEX idx_silver_marches_source ON silver_marches(source);
 -- plusieurs versions bronze ne compte qu'une fois. Uniquement les SIRET
 -- valides à 14 chiffres : jamais un identifiant inventé, une ligne sans
 -- titulaire résolvable n'a simplement rien à apporter ici.
+-- methode_resolution / score_confiance : même sémantique que sur
+-- silver_marches ci-dessus, appliquée au titulaire cette fois.
 CREATE TABLE silver_attributions (
     uid                     TEXT NOT NULL REFERENCES silver_marches(uid),
     siret_titulaire         CHAR(14) NOT NULL,
     nom_titulaire           TEXT,
     source                  TEXT NOT NULL,
+    methode_resolution      TEXT DEFAULT 'siret_exact',
+    score_confiance         NUMERIC,
     date_transformation     TIMESTAMP DEFAULT NOW(),
     PRIMARY KEY (uid, siret_titulaire)
 );
@@ -186,12 +202,17 @@ CREATE TABLE marches (
 );
 
 -- Table des attributions : qui a remporté quel marché (plusieurs titulaires possibles par marché)
+-- methode_resolution/score_confiance : propagés depuis silver_attributions
+-- (sujet section 8, piège "changement de raison sociale" : le doute d'une
+-- résolution floue doit être signalé aux parties suivantes, pas caché).
 CREATE TABLE attributions (
-    id              SERIAL PRIMARY KEY,
-    uid_marche      TEXT REFERENCES marches(uid),
-    siret_titulaire CHAR(14),
-    siren_titulaire CHAR(9) REFERENCES entreprises(siren),
-    date_maj        TIMESTAMP DEFAULT NOW(),
+    id                  SERIAL PRIMARY KEY,
+    uid_marche          TEXT REFERENCES marches(uid),
+    siret_titulaire     CHAR(14),
+    siren_titulaire     CHAR(9) REFERENCES entreprises(siren),
+    methode_resolution  TEXT DEFAULT 'siret_exact',
+    score_confiance     NUMERIC,
+    date_maj            TIMESTAMP DEFAULT NOW(),
     UNIQUE (uid_marche, siret_titulaire)
 );
 

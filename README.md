@@ -19,17 +19,17 @@ Le périmètre est celui proposé par le sujet, section 6 : *« services informa
 Architecture **bronze / silver / gold** (sujet, section 6, S2 : *« Ingestion TED et DECP sur CPV restreint, couches bronze/silver/gold, déduplication, versionnement »*), détaillée en commentaire dans `db/schema.sql` :
 
 - **Bronze** (`bronze_decp_marches`, `bronze_ted_notices`) : copie brute, **append-only**, jamais écrasée. Relancer un chargement bronze après une mise à jour côté source ajoute des lignes plutôt que d'écraser les précédentes — c'est le **versionnement**.
-- **Silver** (`silver_marches`, `silver_attributions`) : reconstruite entièrement à chaque exécution depuis la version la plus récente de chaque marché en bronze — c'est la **déduplication**. Schéma unifié DECP/TED, SIRET validés (14 chiffres exacts, sinon `NULL` — jamais inventé). `silver_marches` porte les attributs de niveau marché ; `silver_attributions` porte les couples marché/titulaire séparément, **un accord-cadre pouvant avoir plusieurs titulaires** (jusqu'à 9 constatés sur le périmètre réel) — les fusionner en une seule ligne ferait disparaître des concurrents réels. Détecte aussi les doublons probables inter-sources (même acheteur, CPV, montant et date proches) et les flague (`doublon_probable_de`) sans jamais les supprimer.
+- **Silver** (`silver_marches`, `silver_attributions`) : reconstruite entièrement à chaque exécution depuis la version la plus récente de chaque marché en bronze — c'est la **déduplication**. Schéma unifié DECP/TED, identifiants résolus selon la hiérarchie du sujet (section 5, détaillée ci-dessous). `silver_marches` porte les attributs de niveau marché ; `silver_attributions` porte les couples marché/titulaire séparément, **un accord-cadre pouvant avoir plusieurs titulaires** (jusqu'à 9 constatés sur le périmètre réel) — les fusionner en une seule ligne ferait disparaître des concurrents réels. Détecte aussi les doublons probables inter-sources (même acheteur, CPV, montant et date proches) et les flague (`doublon_probable_de`) sans jamais les supprimer.
 - **Gold** (`marches`, `attributions`, `acheteurs`, `entreprises`, `etablissements`) : tables métier, structure inchangée, reconstruites depuis silver (les doublons flagués n'y créent pas de ligne séparée).
 
 Étapes, dans l'ordre :
 
 1. `python scripts/charger_bronze_decp.py` — export DECP filtré CPV 72xxxxxx via DuckDB (tous acheteurs du périmètre), chargement dans `bronze_decp_marches` par `COPY` + requête ensembliste (pas de boucle Python).
 2. `python scripts/charger_bronze_ted.py` — avis d'attribution TED (`form-type=result`) du même périmètre, via `connectors/ted.py` (API Search TED v3, publique, sans clé), chargement dans `bronze_ted_notices`.
-3. `python scripts/transformer_silver_marches.py` — bronze → silver : déduplication, validation, schéma unifié, détection des doublons inter-sources.
+3. `python scripts/transformer_silver_marches.py` — bronze → silver : déduplication, validation, schéma unifié, résolution d'identité niveaux 2/3 (cf. section dédiée ci-dessous), détection des doublons inter-sources.
 4. `python scripts/construire_gold_marches.py` — silver → gold : peuple `acheteurs`, `marches`, `entreprises`, `attributions`. Exclut les marchés sans SIRET acheteur valide et les doublons inter-sources flagués.
 5. `python scripts/importer_stock_sirene_national.py` — charge les fichiers stock SIRENE (`data/sirene/*.zip`) en base via `COPY`. Le référentiel SIRENE reste **national et tous secteurs** (section 3 : *« SIRENE / France, toutes entreprises »*) même quand DECP/TED sont restreints à CPV72 : un titulaire de marché informatique peut être immatriculé sous n'importe quel code NAF.
-6. `python scripts/nettoyer_stock_sirene.py` — normalise les valeurs vides, déduplique, verrouille les tables stock.
+6. `python scripts/nettoyer_stock_sirene.py` — normalise les valeurs vides, déduplique, verrouille les tables stock, crée l'index trigram (`pg_trgm`) nécessaire au rapprochement flou (résolution d'identité niveau 3).
 7. `python scripts/enrichir_entreprises_depuis_sirene.py` puis `python scripts/enrichir_etablissements_depuis_sirene.py` — jointures SQL contre le référentiel national, indifféremment de la source (`DECP` ou `TED`) de chaque entreprise.
 8. `python scripts/completer_via_api_sirene.py` — rattrapage via l'API SIRENE pour le résidu non couvert par le stock. Idempotent, ne retente jamais ce qui est déjà catégorisé définitivement.
 9. `python scripts/verification_finale_sirene.py` — rapport de contrôle reproductible.
@@ -37,6 +37,27 @@ Architecture **bronze / silver / gold** (sujet, section 6, S2 : *« Ingestion TE
 Les fichiers stock SIRENE (`stock_unite_legale.zip`, `stock_etablissement.zip`, ~16 Go décompressés) doivent être placés dans `data/sirene/` avant l'étape 5 ; le Parquet DECP (`data/decp/decp.parquet`, ~235 Mo) est téléchargé automatiquement à la première exécution de l'étape 1. Les deux sont volontairement exclus du dépôt (`.gitignore`).
 
 Pour élargir ponctuellement (ex. comparaison intersectorielle), `charger_bronze_decp(prefixe_cpv=None)` reste possible mais n'est pas le périmètre du stage.
+
+## Résolution d'identité (sujet, section 5 : hiérarchie SIRET → normalisation → rapprochement flou → agent)
+
+Niveau 1 (SIRET exact, 14 chiffres) résout la majorité des cas côté DECP directement. Mais l'exploration des données brutes a montré que **171 titulaires et 144 acheteurs TED** avaient un nom exploitable avec un identifiant dans un format non standard (espaces internes, SIRET multiples concaténés dans un même champ, SIREN seul, TVA intracommunautaire, TVA étrangère, identifiants internes TED sans structure). Les laisser exclus aurait fait disparaître jusqu'à 43.6% des marchés TED. `scripts/resolution_identite.py` implémente les niveaux 2 et 3, appelés automatiquement par `transformer_silver_marches.py` pour tout identifiant qui échoue au niveau 1 :
+
+- **Niveau 2 (normalisation, déterministe — même certitude qu'un SIRET exact)** : suppression des espaces internes, éclatement des champs multi-valeurs (récupère plusieurs titulaires cachés dans une seule chaîne), résolution d'un SIREN seul vers le SIRET du siège via le référentiel SIRENE, extraction du SIREN depuis une TVA intracommunautaire française, détection d'une TVA étrangère (catégorisée `ETRANGER`, jamais confondue avec un résultat français — piège « concurrent hors France », section 8).
+- **Niveau 3 (rapprochement flou, probabiliste)** : uniquement si le niveau 2 échoue et qu'un nom est disponible. `pg_trgm` (`similarity()`) contre `sirene_stock_unite_legale`, seuil 0.55, meilleur candidat retenu avec son score. Chaque résultat porte sa méthode (`methode_resolution`) et, pour le niveau 3, son score de confiance (`score_confiance`) — propagés jusqu'à `attributions` (gold) pour que les parties suivantes puissent signaler le doute plutôt que le masquer (section 8 : *« changement de raison sociale -> résolution correcte OU DOUTE SIGNALÉ »*).
+- **Niveau 4 (agent)** : hors périmètre, comme les deux autres agents du sujet.
+
+**Jeu de test annoté à la main** (`tests/donnees/jeu_test_resolution_identite.csv`, 39 cas) : construit à partir de couples (nom, SIREN) réels vérifiés directement contre le référentiel SIRENE (jamais de donnée inventée), complété par des cas construits pour les pièges du sujet (variante de raison sociale, filiale/marque commerciale, TVA étrangère, entrepreneur individuel, homonymie réelle, cas impossible). Mesuré par `python scripts/mesurer_precision_resolution.py` :
+
+| | Précision |
+|---|---|
+| Niveau 2 (normalisation) | 7/7 (100%) |
+| Niveau 3 (rapprochement flou) | 27/32 (84%) |
+| **Global** | 34/39 (**87%**) |
+| **Hors homonymie non résoluble par le nom seul** (cas réservés au niveau 4/agent par le sujet) | 32/33 (**97%**) |
+
+La cible du sujet (section 8, >90%) n'est pas atteinte sur le chiffre global — documenté tel quel, pas masqué. La cause est précisément identifiée : le jeu de test inclut volontairement des cas d'homonymie réelle (ex. « SMILE » : 112 entreprises françaises partagent exactement cette dénomination, vérifié) que le sujet lui-même réserve au niveau 4 (agent), hors périmètre de cette étape. Hors ces cas, la précision est de 97%, au-dessus de la cible.
+
+Effet mesuré sur la base réelle : **128 acheteurs et 164 couples marché/titulaire supplémentaires résolus**, portant les marchés sans acheteur exploitable de 153 à 25, et permettant pour la première fois au piège « concurrent hors France » (harnais d'évaluation) de se déclencher sur un cas réel plutôt que de rester en attente (`SKIP`).
 
 ## Règle de sécurité des suppressions
 
@@ -56,31 +77,35 @@ Périmètre : services informatiques (CPV 72xxxxxx), France, marchés notifiés/
 |---|---|---|
 | bronze_decp_marches | 29 355 | brut DECP, append-only (26 560 uid distincts — l'écart, ~2 800 lignes, ce sont les modifications successives d'un même marché conservées par versionnement) |
 | bronze_ted_notices | 330 | brut TED, append-only |
-| silver_marches | 26 890 | un marché = une ligne, dédupliqué, validé |
-| silver_attributions | 27 063 | un couple marché/titulaire = une ligne (plusieurs par marché possibles) |
-| acheteurs | 2 560 | gold |
-| marches | 26 715 (26 551 DECP + 164 TED) | gold — silver_marches (26 890) moins 153 sans acheteur valide (9 DECP + 144 TED) et 22 doublons TED flagués |
-| attributions | 27 021 | gold |
-| entreprises | 5 702 | gold |
-| etablissements | 6 871 | gold |
+| silver_marches | 26 890 | un marché = une ligne, dédupliqué, validé, résolu (niveaux 1-3) |
+| silver_attributions | 27 227 | un couple marché/titulaire = une ligne (plusieurs par marché possibles), résolu (niveaux 1-3) |
+| acheteurs | 2 604 | gold |
+| marches | 26 824 (26 551 DECP + 273 TED) | gold — silver_marches (26 890) moins 25 sans acheteur exploitable (niveaux 1-3 épuisés) et 41 doublons TED flagués |
+| attributions | 27 164 | gold |
+| entreprises | 5 746 | gold |
+| etablissements | 6 920 | gold |
 | sirene_stock_unite_legale | 29 803 585 | référentiel SIRENE |
 | sirene_stock_etablissement | 43 700 154 | référentiel SIRENE |
 
-**Couverture attribution : 24 598/26 715 marchés ont au moins un titulaire relié (92.1%).** Les marchés restants n'ont pas de titulaire relié en base car leur SIRET source est mal formé ou absent ; conformément au principe du sujet de ne jamais fausser une jointure, ces cas sont exclus plutôt qu'insérés avec un SIRET invalide.
+**Couverture attribution : 24 739/26 824 marchés ont au moins un titulaire relié (92.2%).** Les marchés restants n'ont pas de titulaire relié en base car leur SIRET source est mal formé ou absent et non résolvable même via les niveaux 2/3 ; conformément au principe du sujet de ne jamais fausser une jointure, ces cas sont exclus plutôt qu'insérés avec un SIRET invalide.
 
-**Déduplication inter-sources : 22 doublons probables DECP/TED détectés et flagués** (même acheteur, préfixe CPV, montant à moins de 1%, date à moins de 30 jours) — visibles dans `silver_marches.doublon_probable_de` pour audit, exclus de `marches` pour ne pas compter deux fois le même marché.
+**Déduplication inter-sources : 41 doublons probables DECP/TED détectés et flagués** (même acheteur, préfixe CPV, montant à moins de 1%, date à moins de 30 jours) — visibles dans `silver_marches.doublon_probable_de` pour audit, exclus de `marches` pour ne pas compter deux fois le même marché. En hausse par rapport à avant la résolution d'identité (22) : plus d'acheteurs/titulaires résolus, plus de correspondances DECP/TED détectables.
 
 **Correction notable apportée par la séparation silver_marches / silver_attributions** : l'ancien pipeline (avant l'architecture bronze/silver/gold) pouvait perdre des titulaires sur les accords-cadres à attributaires multiples (`ON CONFLICT DO NOTHING` sur un seul SIRET titulaire par marché, ordre non déterministe). Un accord-cadre réel du périmètre a par exemple 9 titulaires distincts pour le même `uid` — tous désormais correctement conservés dans `silver_attributions`/`attributions`.
 
-**Couverture SIRENE (`scripts/verification_finale_sirene.py`) : 7/8.** Stock national chargé en totalité, sans doublon de clé ; 100% des 5 702 entreprises ont un statut connu ; `etablissements` couvre 99% des SIRET titulaires réels (6 871/6 951) ; aucune dénomination vide, aucun établissement orphelin. Le seul contrôle en échec — *« titulaires hors France détectés et isolés »* — l'est légitimement : sur ce périmètre restreint, aucun identifiant hors France n'apparaît dans l'échantillon ; le piège « concurrent hors France » (section 8 du sujet) reste couvert par le code (`connectors/sirene.py`, `completer_via_api_sirene.py`), simplement non déclenché par ce jeu de données précis. Documenté tel quel plutôt que masqué.
+**Répartition des méthodes de résolution en gold (`attributions`)** : `siret_exact` 27 034, `flou` 76, `espaces` 30, `siren_seul` 14, `etranger` 6, `siret_exact_segmente` 3, `tva_fr` 1.
+
+**Couverture SIRENE (`scripts/verification_finale_sirene.py`) : 8/8.** Stock national chargé en totalité, sans doublon de clé ; 100% des 5 746 entreprises ont un statut connu ; `etablissements` couvre 99% des SIRET titulaires réels (6 920/7 006) ; aucune dénomination vide, aucun établissement orphelin. **Le piège « concurrent hors France » (section 8 du sujet) se déclenche désormais réellement** : 5 entreprises marquées `ETRANGER` (détectées via la résolution d'identité niveau 2 sur des TVA intracommunautaires étrangères côté TED — invisibles avant, car ces identifiants ne matchaient jamais le niveau 1 et étaient simplement exclus). Le harnais d'évaluation confirme le déclenchement effectif (`déclaré=True, dégradé=True, compté=True`), plus un `SKIP` en attente.
 
 ## Limites de données connues
 
-- **Couverture acheteur TED nettement plus faible que DECP** : sur 330 avis d'attribution TED récupérés (CPV72, France, 3 ans), 153 marchés au total (DECP + TED confondus) n'ont pas d'identifiant acheteur exploitable en silver et sont exclus de gold — jamais insérés avec un SIRET inventé.
-- **Chevauchement DECP/TED** : un même marché au-dessus des seuils européens peut légitimement apparaître à la fois dans DECP et dans TED. Depuis l'architecture bronze/silver/gold, ce cas est désormais **détecté et flagué** (`doublon_probable_de`) plutôt que silencieusement dupliqué — 22 cas identifiés sur ce périmètre. La ligne DECP est retenue comme référence (SIRET titulaire plus fiable, section 3 du sujet), la ligne TED reste visible en silver pour audit mais n'entre pas dans `marches`.
+- **Homonymie non résoluble par le nom seul** : la résolution niveau 3 (rapprochement flou) échoue structurellement quand plusieurs entreprises françaises partagent exactement la même dénomination (ex. « SMILE » : 112 cas réels, « BELHARRA » : 42) — le sujet réserve ce cas au niveau 4 (agent), hors périmètre actuel. Mesuré précisément à 33% de précision sur ce sous-type dans `tests/donnees/jeu_test_resolution_identite.csv`, documenté plutôt que masqué.
+- **25 marchés (9 DECP + 16 TED) restent sans acheteur exploitable** même après les niveaux 2/3 : identifiant brut sans structure reconnue et sans rapprochement flou concluant sur le nom.
+- **Chevauchement DECP/TED** : un même marché au-dessus des seuils européens peut légitimement apparaître à la fois dans DECP et dans TED. Détecté et flagué (`doublon_probable_de`) plutôt que silencieusement dupliqué — 41 cas identifiés sur ce périmètre. La ligne DECP est retenue comme référence (SIRET titulaire plus fiable, section 3 du sujet), la ligne TED reste visible en silver pour audit mais n'entre pas dans `marches`.
 - **TED : dates simplifiées** — `date_notification` et `date_publication` prennent la même valeur (`publication-date` de l'avis TED), TED ne distinguant pas ces deux dates au niveau du champ testé, contrairement à DECP. `duree_mois`/`duree_restante_mois` restent `NULL` pour les marchés TED : l'API ne renvoie pas de durée simple exploitable à ce niveau d'agrégation, et aucune durée n'est inférée pour ne pas fabriquer une donnée absente.
-- 6 entreprises marquées `INTROUVABLE_API` (404 sur l'API Sirene) : non résolvables via le référentiel SIRENE au moment du passage — à traiter par un futur agent d'investigation d'identité hors SIRENE plutôt que retentées en boucle.
-- 80 SIRET titulaires (6 951 − 6 871) sans établissement correspondant dans le stock national : établissement fermé/radié avant l'historique disponible, ou SIRET mal saisi côté source.
+- 7 entreprises marquées `INTROUVABLE_API` (404 sur l'API Sirene) : non résolvables via le référentiel SIRENE au moment du passage — à traiter par un futur agent d'investigation d'identité hors SIRENE plutôt que retentées en boucle.
+- 86 SIRET titulaires (7 006 − 6 920) sans établissement correspondant dans le stock national : établissement fermé/radié avant l'historique disponible, ou SIRET mal saisi côté source.
 - L'API Sirene applique une limite d'environ 30 requêtes/minute (au-delà : `429 Too Many Requests`) ; `completer_via_api_sirene.py` respecte ce débit et peut nécessiter plusieurs passages successifs sur un gros résidu.
+- **Rapprochement flou lent sur les noms courts/fréquents** : une requête `similarity()` contre 29,8M lignes peut prendre de 1 à 20 secondes selon la rareté du nom, même avec l'index trigram (`idx_sirene_stock_unite_legale_denom_trgm`) et le seuil `pg_trgm.similarity_threshold` relevé au niveau du seuil d'acceptation. Pas de cache entre appels identiques au sein d'une même exécution — acceptable pour le volume actuel (quelques centaines de résolutions par run), à revoir si le volume grossit significativement.
 - **Bronze non purgé automatiquement** : chaque exécution de `charger_bronze_decp.py`/`charger_bronze_ted.py` ajoute des lignes (c'est le versionnement voulu) sans jamais en supprimer — sur de nombreuses ré-exécutions successives sans changement source, `bronze_decp_marches` grossit sans purge automatique des versions anciennes. Acceptable à l'échelle du stage (8 semaines) ; une politique de rétention serait nécessaire en production.
-- Sauvegardes horodatées disponibles en base : `backup_*_20260803` (recadrage national → CPV72) et `backup_*_pre_bsg_20260803` (avant reconstruction bronze/silver/gold) — conservées par sécurité, non utilisées par le pipeline.
+- Sauvegardes horodatées disponibles en base : `backup_*_20260803` (recadrage national → CPV72), `backup_*_pre_bsg_20260803` (avant reconstruction bronze/silver/gold) et `backup_*_pre_s3_20260803` (avant résolution d'identité) — conservées par sécurité, non utilisées par le pipeline.

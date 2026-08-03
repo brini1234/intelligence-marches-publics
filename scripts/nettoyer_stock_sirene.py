@@ -89,6 +89,19 @@ def nettoyer_stock_sirene():
             nb_apres = connexion.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar()
             print(f"  Lignes après nettoyage : {nb_apres:,}".replace(",", " "))
 
+    with engine.begin() as connexion:
+        # Index trigram : nécessaire au rapprochement flou (niveau 3 de la
+        # résolution d'identité, scripts/resolution_identite.py). Créé ici
+        # (pas en commande manuelle) pour que le pipeline reste rejouable
+        # de zéro à partir du seul README.
+        print("\n=== Index trigram pour le rapprochement flou (pg_trgm) ===")
+        connexion.execute(text('CREATE EXTENSION IF NOT EXISTS pg_trgm'))
+        connexion.execute(text(
+            'CREATE INDEX IF NOT EXISTS idx_sirene_stock_unite_legale_denom_trgm '
+            'ON sirene_stock_unite_legale USING gin ("denominationUniteLegale" gin_trgm_ops)'
+        ))
+        print("  Index créé (ou déjà présent).")
+
     print("\n✅ Nettoyage terminé. Prochaine étape : "
           "python scripts/enrichir_entreprises_depuis_sirene.py")
 

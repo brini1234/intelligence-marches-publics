@@ -93,10 +93,15 @@ def construire_gold_marches():
         """))
 
         # 4. Attributions (relie marché et titulaire — plusieurs titulaires
-        # possibles par marché, cf. silver_attributions)
+        # possibles par marché, cf. silver_attributions). methode_resolution/
+        # score_confiance propagés depuis silver : les parties suivantes
+        # (fiche de faits) doivent pouvoir signaler le doute d'une
+        # résolution floue, pas la traiter comme aussi certaine qu'un SIRET
+        # exact (sujet section 8 : "résolution correcte OU DOUTE SIGNALÉ").
         connexion.execute(text("""
-            INSERT INTO attributions (uid_marche, siret_titulaire, siren_titulaire)
-            SELECT DISTINCT sa.uid, sa.siret_titulaire, LEFT(sa.siret_titulaire, 9)
+            INSERT INTO attributions (uid_marche, siret_titulaire, siren_titulaire, methode_resolution, score_confiance)
+            SELECT DISTINCT sa.uid, sa.siret_titulaire, LEFT(sa.siret_titulaire, 9),
+                   sa.methode_resolution, sa.score_confiance
             FROM silver_attributions sa
             JOIN silver_marches sm ON sm.uid = sa.uid
             WHERE sm.siret_acheteur IS NOT NULL
@@ -114,6 +119,9 @@ def construire_gold_marches():
         nb_exclus_doublons = connexion.execute(text(
             "SELECT COUNT(*) FROM silver_marches WHERE doublon_probable_de IS NOT NULL"
         )).scalar()
+        repartition_methode = connexion.execute(text(
+            "SELECT methode_resolution, COUNT(*) FROM attributions GROUP BY 1 ORDER BY 2 DESC"
+        )).fetchall()
 
     print(f"\n✅ Construction gold terminée. Totaux en base : "
           f"{nb_acheteurs:,} acheteurs, {nb_marches:,} marchés, "
@@ -121,6 +129,7 @@ def construire_gold_marches():
     print(f"  Exclus de gold : {nb_exclus_sans_acheteur} sans SIRET acheteur valide, "
           f"{nb_exclus_doublons} doublon(s) probable(s) inter-sources "
           f"(visibles en silver_marches pour audit)")
+    print(f"  Méthode de résolution des attributions : {dict(repartition_methode)}")
 
 
 if __name__ == "__main__":
