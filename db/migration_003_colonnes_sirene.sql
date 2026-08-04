@@ -1,6 +1,12 @@
 -- migration_003_colonnes_sirene.sql
 -- Idempotent : peut être relancé sans risque, même si certaines colonnes existent déjà.
 -- À exécuter avec : psql "$DATABASE_URL" -f db/migration_003_colonnes_sirene.sql
+--
+-- HISTORIQUE : ces colonnes sont désormais directement dans db/schema.sql
+-- (table entreprises). Ce fichier n'est plus nécessaire pour une
+-- installation neuve (db/schema.sql suffit) ; conservé uniquement comme
+-- trace de la migration appliquée à la base existante avant que
+-- schema.sql ne soit mis à jour pour les inclure nativement.
 
 ALTER TABLE entreprises ADD COLUMN IF NOT EXISTS raison_sociale_legale TEXT;
 ALTER TABLE entreprises ADD COLUMN IF NOT EXISTS forme_juridique TEXT;
