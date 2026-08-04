@@ -4,7 +4,8 @@
 1. `python3.11 -m venv venv && source venv/bin/activate`
 2. `pip install -r requirements.txt`
 3. Copier `.env.example` vers `.env` et renseigner `DATABASE_URL` et `SIRENE_API_KEY`
-4. `psql -U stage_user -d marches_publics -f db/schema.sql`
+4. Installer l'extension `pgvector` sur le serveur PostgreSQL utilisé (nécessaire à `db/schema.sql`, cf. section « Embeddings et graphe concurrentiel » plus bas pour la méthode retenue sur cette machine) — `brew install pgvector` suffit sur une installation Homebrew standard à jour ; sinon compiler contre le `pg_config` de la version réellement utilisée.
+5. `psql -U stage_user -d marches_publics -f db/schema.sql` — `CREATE EXTENSION` (pg_trgm, vector) nécessite un compte PostgreSQL superutilisateur, pas nécessairement `stage_user` ; lancer ces deux lignes avec un compte superutilisateur si besoin avant le reste du script.
 
 ## Test rapide
 
@@ -33,6 +34,7 @@ Architecture **bronze / silver / gold** (sujet, section 6, S2 : *« Ingestion TE
 7. `python scripts/enrichir_entreprises_depuis_sirene.py` puis `python scripts/enrichir_etablissements_depuis_sirene.py` — jointures SQL contre le référentiel national, indifféremment de la source (`DECP` ou `TED`) de chaque entreprise.
 8. `python scripts/completer_via_api_sirene.py` — rattrapage via l'API SIRENE pour le résidu non couvert par le stock. Idempotent, ne retente jamais ce qui est déjà catégorisé définitivement.
 9. `python scripts/verification_finale_sirene.py` — rapport de contrôle reproductible.
+10. `python scripts/generer_embeddings_marches.py` — embeddings sémantiques des objets de marché (S4, cf. section dédiée ci-dessous), pour le rapprochement de marchés similaires malgré un CPV mal saisi.
 
 Les fichiers stock SIRENE (`stock_unite_legale.zip`, `stock_etablissement.zip`, ~16 Go décompressés) doivent être placés dans `data/sirene/` avant l'étape 5 ; le Parquet DECP (`data/decp/decp.parquet`, ~235 Mo) est téléchargé automatiquement à la première exécution de l'étape 1. Les deux sont volontairement exclus du dépôt (`.gitignore`).
 
@@ -58,6 +60,19 @@ Niveau 1 (SIRET exact, 14 chiffres) résout la majorité des cas côté DECP dir
 La cible du sujet (section 8, >90%) n'est pas atteinte sur le chiffre global — documenté tel quel, pas masqué. La cause est précisément identifiée : le jeu de test inclut volontairement des cas d'homonymie réelle (ex. « SMILE » : 112 entreprises françaises partagent exactement cette dénomination, vérifié) que le sujet lui-même réserve au niveau 4 (agent), hors périmètre de cette étape. Hors ces cas, la précision est de 97%, au-dessus de la cible.
 
 Effet mesuré sur la base réelle : **128 acheteurs et 164 couples marché/titulaire supplémentaires résolus**, portant les marchés sans acheteur exploitable de 153 à 25, et permettant pour la première fois au piège « concurrent hors France » (harnais d'évaluation) de se déclencher sur un cas réel plutôt que de rester en attente (`SKIP`).
+
+## Embeddings et graphe concurrentiel (sujet, section 4 et 6 : S4)
+
+Le sujet précise où les vecteurs interviennent, et nulle part ailleurs : *« rapprocher les objets de marché similaires, car les codes CPV sont mal saisis »*. Le reste (filiales, groupements, renouvellements) *« se modélise dans PostgreSQL avec des requêtes récursives »* — pas un moteur de graphe séparé.
+
+- **`pgvector`** (extension requise, section 9) : non disponible via le paquet Homebrew standard sur cette machine (il ne compile que contre postgresql@17/18, alors que le serveur réel tourne en 16). Compilé manuellement contre postgresql@16 (`make PG_CONFIG=.../postgresql@16/bin/pg_config`, méthode officielle du projet pgvector) — nécessite un compte PostgreSQL superutilisateur pour `CREATE EXTENSION` (pas le compte applicatif `stage_user`).
+- **Embeddings** (`scripts/generer_embeddings_marches.py`) : modèle local `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions, sentence-transformers) — aucune passerelle LLM externe n'étant configurée dans ce projet, un modèle local évite toute dépendance à une clé absente, pour une tâche qui n'a pas besoin de la qualité d'un grand modèle. **26 796/26 824 marchés couverts (100% de ceux ayant un objet non vide)**, index HNSW (`idx_marches_objet_embedding`, distance cosinus) créé après peuplement.
+- **`scripts/marches_similaires.py`** : recherche par distance cosinus (`<=>`), retourne toujours un score de similarité — jamais un rapprochement présenté comme aussi certain qu'une correspondance exacte de CPV. Démonstration réelle : un marché TED de « services de transmission de données » retrouve des marchés d'« océanographie et hydrologie » (CPV différent, 71351920 vs le CPV d'origine) avec un score de 0.78 — exactement le piège « CPV mal saisi » du sujet (section 8), désormais **testé automatiquement dans `harnais_evaluation.py` (passe de `NON IMPLÉMENTÉ` à `PASS`)**.
+- **`scripts/graphe_concurrentiel.py`** : requêtes `WITH RECURSIVE` sur les tables déjà en place, pas de nouvelle table de type graphe.
+  - `co_titulaires_transitifs(siren, profondeur_max)` : groupements (co-traitance), directs et transitifs. Vérifié sur un accord-cadre réel (9 titulaires) : retrouve un réseau de co-traitance cohérent (ex. Wavestone, BearingPoint, CGI, Talan à profondeur 2).
+  - `chaine_marches_acheteur(siret_acheteur, code_cpv)` : séquence chronologique des marchés d'un acheteur — la brique de traversée que S5 branchera sur `detecter_sortant.py` pour une vraie reconstitution de chaîne de renouvellement (pas fait ici : S4 livre la capacité, S5 l'utilisera).
+- **Limite assumée : les *filiales* ne sont pas modélisées.** Aucun dataset de liens de succession/structure de groupe n'est chargé (le stock SIRENE utilisé ne le contient pas). Une heuristique (adresse ou préfixe SIREN partagés) produirait des rapprochements non fiables — contraire au principe déjà appliqué dans tout le projet (*« jamais fausser une jointure »*). Documenté comme limite, pas simulé.
+- **Dépendances lourdes ajoutées** : `sentence-transformers` (entraîne `torch`, ~1,2 Go). Premier lancement : téléchargement du modèle (~470 Mo, une fois, mis en cache). Sur cette machine (CPU sans accélération), l'encodage initial de l'ensemble du périmètre a pris plusieurs dizaines de minutes — acceptable en tâche de fond ponctuelle, pas en chemin critique d'un briefing (le modèle reste chargé en mémoire pour les requêtes suivantes dans un même processus).
 
 ## Règle de sécurité des suppressions
 

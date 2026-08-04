@@ -2,6 +2,12 @@
 -- résolution d'identité, sujet section 5) via la fonction similarity().
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
+-- vector (pgvector) : nécessaire aux embeddings d'objets de marché (sujet
+-- section 9 : "PostgreSQL avec extension vectorielle"), S4. Ces deux
+-- CREATE EXTENSION nécessitent un compte superutilisateur PostgreSQL (pas
+-- le compte applicatif stage_user) — cf. README, section installation.
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- =====================================================================
 -- Architecture bronze / silver / gold (sujet, section 6, S2 : "Ingestion
 -- TED et DECP sur CPV restreint, couches bronze/silver/gold, déduplication,
@@ -182,11 +188,18 @@ CREATE TABLE acheteurs (
 );
 
 -- Table des marchés (un objet de marché = une ligne, indépendamment du/des titulaire(s))
+-- objet_embedding : vecteur sémantique de `objet` (sujet, section 4 et 6,
+-- S4), utilisé pour rapprocher des marchés similaires quand le CPV est mal
+-- saisi (section 8). Peuplé par scripts/generer_embeddings_marches.py
+-- (modèle local sentence-transformers, pas d'appel API). Index HNSW créé
+-- par ce même script après peuplement (même logique que l'index trigram
+-- SIRENE : jamais sur une colonne encore vide).
 CREATE TABLE marches (
     uid                     TEXT PRIMARY KEY,
     id_marche               TEXT,
     siret_acheteur          CHAR(14) REFERENCES acheteurs(siret),
     objet                   TEXT,
+    objet_embedding         vector(384),
     montant                 NUMERIC,
     duree_mois              NUMERIC,
     duree_restante_mois     NUMERIC,

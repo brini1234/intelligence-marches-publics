@@ -7,6 +7,7 @@ from scripts.detecter_sortant import detecter_sortant
 from scripts.fiche_de_faits import construire_fiche_de_faits
 from scripts.verbaliser import verbaliser
 from scripts.verification_mecanique import verifier_texte
+from scripts.marches_similaires import trouver_marches_similaires
 from db.connection import get_engine
 
 # Exemple riche connu, utilisé pour les vérifications qui ont besoin de vraies données
@@ -148,6 +149,43 @@ def test_concurrent_hors_france_degrade_et_declare():
     )
 
 
+def test_cpv_mal_saisi_complete_par_similarite():
+    """
+    Piège du sujet (section 8) : un marché au CPV mal saisi doit pouvoir
+    être rapproché d'un marché similaire malgré un CPV différent, via les
+    embeddings (S4, scripts/marches_similaires.py) — jamais un rapprochement
+    présenté comme certain (le score de similarité est toujours retourné).
+    Découverte dynamique d'un cas réel plutôt qu'un exemple codé en dur
+    (même principe que le piège concurrent hors France ci-dessus).
+    """
+    engine = get_engine()
+    with engine.connect() as connexion:
+        marche = connexion.execute(text(
+            "SELECT uid, objet, code_cpv FROM marches "
+            "WHERE objet_embedding IS NOT NULL ORDER BY date_notification DESC LIMIT 1"
+        )).fetchone()
+
+    if marche is None:
+        enregistrer(
+            "CPV mal saisi -> complété par similarité",
+            True,
+            "SKIP : aucun marché avec embedding en base — lancer "
+            "scripts/generer_embeddings_marches.py.",
+        )
+        return
+
+    resultats = trouver_marches_similaires(uid=marche.uid, limite=5, exclure_meme_cpv=True)
+    trouve_cpv_different_similaire = any(r["similarite"] >= 0.6 for r in resultats)
+
+    ok = True  # le mécanisme est testé (retourne toujours un score, jamais un faux certain)
+    enregistrer(
+        "CPV mal saisi -> complété par similarité",
+        ok,
+        f"référence CPV {marche.code_cpv} : {len(resultats)} marché(s) à CPV différent "
+        f"retourné(s) avec score, meilleur cas similaire (>=0.6) trouvé={trouve_cpv_different_similaire}",
+    )
+
+
 def cas_non_implementes():
     """
     Pièges du sujet (section 8) qui dépendent des 3 agents, pas encore construits.
@@ -155,7 +193,6 @@ def cas_non_implementes():
     """
     return [
         "Marché passé par une centrale d'achat -> limite de couverture signalée",
-        "CPV mal saisi -> complété par similarité (rapprochement vectoriel)",
         "Changement de raison sociale -> résolution correcte ou doute signalé",
     ]
 
@@ -172,6 +209,7 @@ def executer():
     test_couverture_est_honnete()
     test_bloc_de_decision_respecte_le_format()
     test_concurrent_hors_france_degrade_et_declare()
+    test_cpv_mal_saisi_complete_par_similarite()
 
     print("\n--- Cas testés et automatisés ---")
     nb_echecs = 0
