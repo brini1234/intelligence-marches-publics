@@ -150,7 +150,15 @@ def exporter_perimetre_complet(
     while True:
         page = _rechercher_page(query, iteration_token=token)
         lot = page.get("notices", [])
-        notices.extend(_normaliser_notice(n, prefixe_cpv) for n in lot)
+        notices_normalisees = (_normaliser_notice(n, prefixe_cpv) for n in lot)
+        # Le filtre buyer-country de la requête n'est pas fiable côté API :
+        # constaté en base (bronze_ted_notices), des institutions UE hors
+        # France (Commission européenne à Bruxelles/BEL, Parlement européen
+        # à Luxembourg/LUX) sont renvoyées malgré buyer-country=FRA. Même
+        # principe que _code_cpv_du_perimetre : ne jamais faire confiance
+        # au seul filtre de requête, revérifier sur la valeur réellement
+        # portée par chaque notice avant de la garder.
+        notices.extend(n for n in notices_normalisees if n["buyer_country"] == pays)
         token = page.get("iterationNextToken")
         total = page.get("totalNoticeCount", 0)
         if not lot or not token or len(notices) >= total:
