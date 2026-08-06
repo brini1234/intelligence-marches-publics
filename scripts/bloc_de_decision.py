@@ -33,8 +33,9 @@ def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur
     lignes = [
         f"Acheteur : {nom_acheteur or siret_acheteur} | Objet CPV : {code_cpv}",
         f"Sortant probable : {valeurs['titulaire_actuel']['valeur']} (couverture: {pct('titulaire_actuel')})",
-        f"Échéance estimée : ~{valeurs['duree_restante_mois']['valeur']} mois restants "
-        f"(dernier marché: {valeurs['date_dernier_marche']['valeur']})",
+        f"Échéance estimée : {valeurs['date_expiration_estimee']['valeur']} "
+        f"(dernier marché: {valeurs['date_dernier_marche']['valeur']}) "
+        f"(couverture: {pct('date_expiration_estimee')})",
         f"Concurrents observés : {concurrents_txt} (couverture: {pct('concurrents_observes')})",
         f"Fourchette de prix : {prix_min:,.0f} € — {prix_max:,.0f} € (n={n}, indicatif) "
         f"(couverture: {pct('fourchette_prix_min')})",

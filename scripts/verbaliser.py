@@ -25,7 +25,7 @@ def verbaliser(fiche: dict) -> str:
     texte = (
         f"Titulaire actuel probable : {valeurs['titulaire_actuel']} "
         f"(dernier marché notifié le {valeurs['date_dernier_marche']}, "
-        f"~{valeurs['duree_restante_mois']} mois restants). "
+        f"échéance estimée : {valeurs['date_expiration_estimee']}). "
         f"Concurrents observés : {concurrents_txt}. "
         f"Fourchette de prix constatée : {fourchette_txt}. "
         f"Pondération de l'acheteur : {valeurs['ponderation_acheteur']}. "

@@ -202,6 +202,29 @@ def transformer_silver_marches():
         nb_titulaires_resolus = _resoudre_titulaires_niveaux_2_3(connexion)
         print(f"    {nb_titulaires_resolus} couple(s) marché/titulaire supplémentaire(s) résolu(s)")
 
+        # Validation de plausibilité des dates (sujet, section 6 : silver
+        # "validée"). Une erreur de saisie côté source peut produire une
+        # date syntaxiquement valide mais absurde (ex. constaté en base :
+        # '0206-06-23') : ::date l'accepte silencieusement, contrairement
+        # au SIRET déjà validé par regex. Bornes larges (pas un jugement sur
+        # la fenaître de 3-5 ans du périmètre, seulement un filtre anti-
+        # corruption) : jamais une date fabriquée en remplacement, seulement
+        # NULL — même principe que le reste de la couche silver.
+        print("  Validation de plausibilité des dates (bornes 2000-01-01 .. aujourd'hui+2 ans) ...")
+        resultat_dates_notif = connexion.execute(text("""
+            UPDATE silver_marches
+            SET date_notification = NULL
+            WHERE date_notification IS NOT NULL
+              AND date_notification NOT BETWEEN DATE '2000-01-01' AND (CURRENT_DATE + INTERVAL '2 years')::date
+        """))
+        resultat_dates_publi = connexion.execute(text("""
+            UPDATE silver_marches
+            SET date_publication = NULL
+            WHERE date_publication IS NOT NULL
+              AND date_publication NOT BETWEEN DATE '2000-01-01' AND (CURRENT_DATE + INTERVAL '2 years')::date
+        """))
+        nb_dates_invalidees = resultat_dates_notif.rowcount + resultat_dates_publi.rowcount
+
         print("  Détection des doublons probables inter-sources (DECP/TED) ...")
         resultat_doublons = connexion.execute(text("""
             UPDATE silver_marches ted
@@ -243,6 +266,8 @@ def transformer_silver_marches():
     print(f"  silver_attributions : {nb_attributions} couple(s) marché/titulaire distinct(s)")
     print(f"  {resultat_doublons.rowcount} doublon(s) probable(s) inter-sources flagué(s) "
           f"(non supprimés, exclus de gold uniquement)")
+    print(f"  {nb_dates_invalidees} date(s) implausible(s) détectée(s) et mise(s) à NULL "
+          f"(hors 2000-01-01 .. aujourd'hui+2 ans, jamais une date fabriquée en remplacement)")
     print(f"  {nb_sans_acheteur} marché(s) toujours sans SIRET acheteur valide "
           f"(conservé(s) en silver pour audit, exclu(s) de gold)")
     print(f"  Méthode de résolution acheteurs : {dict(repartition_methode_acheteur)}")

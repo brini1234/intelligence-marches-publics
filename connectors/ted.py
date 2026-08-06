@@ -91,7 +91,24 @@ def _rechercher_page(query: str, iteration_token: str | None = None) -> dict:
     return reponse.json()
 
 
-def _normaliser_notice(brute: dict) -> dict:
+def _code_cpv_du_perimetre(identifiants_cpv: list[str], prefixe_cpv: str) -> str | None:
+    """
+    Un avis TED porte souvent plusieurs codes CPV (classification-cpv est une
+    liste). La requête filtre sur "au moins un code commence par prefixe_cpv",
+    donc le premier élément de la liste n'est pas forcément celui qui a fait
+    matcher le filtre — le stocker tel quel pouvait silencieusement placer un
+    marché hors périmètre 72xxxxxx dans `marches.code_cpv` (bug trouvé en
+    vérifiant la base : 45/273 marchés TED concernés). On préfère donc le
+    code qui appartient réellement au périmètre demandé ; à défaut (ne
+    devrait pas arriver vu le filtre de requête, mais pas d'hypothèse
+    aveugle), on retombe sur le premier élément plutôt que de perdre le CPV.
+    """
+    if not identifiants_cpv:
+        return None
+    return next((c for c in identifiants_cpv if c.startswith(prefixe_cpv)), identifiants_cpv[0])
+
+
+def _normaliser_notice(brute: dict, prefixe_cpv: str) -> dict:
     identifiants_cpv = brute.get("classification-cpv") or []
     return {
         "publication_number": brute.get("publication-number"),
@@ -103,7 +120,7 @@ def _normaliser_notice(brute: dict) -> dict:
         "winner_name": _premiere_valeur_multilingue(brute.get("winner-name")),
         "winner_country": (brute.get("winner-country") or [None])[0],
         "winner_identifier": (brute.get("winner-identifier") or [None])[0],
-        "code_cpv": identifiants_cpv[0] if identifiants_cpv else None,
+        "code_cpv": _code_cpv_du_perimetre(identifiants_cpv, prefixe_cpv),
         "montant": brute.get("total-value"),
         "objet": _premiere_valeur_multilingue(brute.get("notice-title")),
         "procedure_type": brute.get("procedure-type"),
@@ -133,7 +150,7 @@ def exporter_perimetre_complet(
     while True:
         page = _rechercher_page(query, iteration_token=token)
         lot = page.get("notices", [])
-        notices.extend(_normaliser_notice(n) for n in lot)
+        notices.extend(_normaliser_notice(n, prefixe_cpv) for n in lot)
         token = page.get("iterationNextToken")
         total = page.get("totalNoticeCount", 0)
         if not lot or not token or len(notices) >= total:

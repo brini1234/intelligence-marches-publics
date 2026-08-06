@@ -36,6 +36,22 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
 
     historique = resultat["historique"]
 
+    # Couverture de l'échéance estimée (sujet section 4 : "estimer la date
+    # d'expiration à partir de la date d'attribution et de la durée
+    # (inférée par famille de marché quand elle manque)") : une durée
+    # réellement publiée par la source garde la couverture normale du
+    # sortant ; une durée inférée par médiane CPV dégrade la couverture
+    # (c'est une estimation, jamais aussi certaine qu'une donnée source) ;
+    # aucune durée disponible nulle part sur ce CPV -> couverture nulle,
+    # jamais un chiffre fabriqué.
+    duree_source = resultat.get("duree_source")
+    if duree_source == "reelle":
+        couverture_expiration = score
+    elif duree_source == "inferee_famille_cpv":
+        couverture_expiration = round(score * 0.5, 2)
+    else:
+        couverture_expiration = 0.0
+
     # Concurrents observés : les autres entreprises de la même famille de
     # marchés, hors le sortant actuel, sans doublon, dans l'ordre d'apparition.
     # Les concurrents hors France sont explicitement étiquetés dans leur nom
@@ -76,6 +92,19 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
             "valeur": resultat["duree_restante_mois"],
             "provenance": "table marches, champ duree_restante_mois (source DECP)",
             "couverture": score,
+        },
+        {
+            "cle": "date_expiration_estimee",
+            "valeur": resultat.get("date_expiration_estimee") or "inconnue",
+            "provenance": (
+                "calculé : date_notification + durée réelle (table marches)"
+                if duree_source == "reelle"
+                else "calculé : date_notification + durée médiane observée sur ce CPV "
+                     "(durée réelle absente de la source, notamment tous les marchés TED)"
+                if duree_source == "inferee_famille_cpv"
+                else "non calculable : aucune durée, réelle ou inférable, disponible pour ce CPV"
+            ),
+            "couverture": couverture_expiration,
         },
         {
             "cle": "date_dernier_marche",
