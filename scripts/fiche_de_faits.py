@@ -1,6 +1,8 @@
 import sys
 sys.path.append(".")
 
+from collections import Counter
+
 from scripts.detecter_sortant import detecter_sortant
 
 SCORES_COUVERTURE = {
@@ -54,19 +56,37 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
 
     # Concurrents observés : les autres entreprises de la même famille de
     # marchés, hors le sortant actuel, sans doublon, dans l'ordre d'apparition.
+    # Chaque concurrent porte sa fréquence d'apparition sur l'ensemble des
+    # attributions retrouvées pour cet acheteur/CPV — formulation exigée par
+    # le sujet (section 2) : jamais une "part de marché" en %, toujours un
+    # compte brut ("X apparaît dans N des M attributions retrouvées"), qui
+    # ne prétend pas être une part de marché faute d'univers exhaustif connu.
     # Les concurrents hors France sont explicitement étiquetés dans leur nom
     # (déclaration visible dans le texte final, pas seulement dans un champ
     # technique que personne ne lit).
+    total_attributions = len(historique)
+    occurrences = Counter()
+    hors_france = set()
+    ordre_apparition = []
+    for h in historique:
+        nom = h["denomination"]
+        if nom is None or nom == resultat["sortant_probable"]:
+            continue
+        if nom not in occurrences:
+            ordre_apparition.append(nom)
+        occurrences[nom] += 1
+        if h.get("etat_administratif") == "ETRANGER":
+            hors_france.add(nom)
+
     concurrents = []
     nb_concurrents_hors_france = 0
-    for h in historique[1:]:
-        if h["denomination"] in concurrents or h["denomination"] == resultat["sortant_probable"]:
-            continue
-        if h.get("etat_administratif") == "ETRANGER":
-            concurrents.append(f"{h['denomination']} [hors France]")
+    for nom in ordre_apparition:
+        frequence = f"{occurrences[nom]}/{total_attributions} attribution(s)"
+        if nom in hors_france:
+            concurrents.append(f"{nom} [hors France] ({frequence})")
             nb_concurrents_hors_france += 1
         else:
-            concurrents.append(h["denomination"])
+            concurrents.append(f"{nom} ({frequence})")
 
     # Fourchette de prix observée sur toute la famille de marchés
     montants = [h["montant"] for h in historique if h["montant"] is not None]
