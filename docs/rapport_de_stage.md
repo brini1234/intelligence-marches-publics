@@ -85,6 +85,8 @@ flowchart TB
 
 **Tech stack vérifiable** (`requirements.txt`) : PostgreSQL (extensions `pg_trgm` et `vector`/pgvector), SQLAlchemy + psycopg2, DuckDB (filtrage du Parquet DECP côté client), `sentence-transformers` (embeddings locaux), pytest. Aucune dépendance à une API LLM externe.
 
+**Sources connectées vs sources du sujet** : le sujet (section 3) recense 6 sources — SIRENE, TED, DECP, BOAMP, Pappers/Infogreffe, web ouvert. Ce projet en connecte 3 (`connectors/sirene.py`, `connectors/ted.py`, `connectors/decp.py`). BOAMP et Pappers/Infogreffe ne sont ni explorés ni implémentés (aucune trace dans `connectors/` ni dans les scripts de chargement) ; le web ouvert est associé à l'agent d'enrichissement web, non construit (cf. section 3 ci-dessous). Détail en section 8 (Pistes d'extension).
+
 ## 3. Frontière déterministe / agentique, et sa justification
 
 Tout ce qui est construit dans ce projet (S1 à S5, S7, la partie faite de S8) est du **code déterministe** : requêtes SQL, règles de normalisation par expression régulière, seuils numériques fixes, gabarit de texte strict (`verbaliser.py` ne contient aucune génération libre, uniquement des f-strings sur des valeurs déjà validées). Rejouer le pipeline sur les mêmes données produit exactement le même résultat.
@@ -145,7 +147,7 @@ Ce mécanisme se propage dans `fiche_de_faits.py`, qui dégrade explicitement la
 
 ## 6. Métriques
 
-**Le sujet a été fourni en texte intégral au cours de cette rédaction** (section 8 : tableau de 6 métriques — taux d'affirmations sourcées, taux d'hallucination, précision résolution d'identité, précision détection du sortant, couverture, coût/latence par briefing — et 5 pièges de démonstration). Le tableau ci-dessous reprend les métriques et pièges effectivement mesurables avec les scripts existants ; chaque ligne est vérifiée par une commande reproductible, relancée le 10/08/2026.
+**Le sujet a été fourni en texte intégral au cours de cette rédaction** (section 8 : tableau de 6 métriques — taux d'affirmations sourcées, taux d'hallucination, précision résolution d'identité, précision détection du sortant, couverture, coût/latence par briefing — et 5 pièges de démonstration). Le tableau ci-dessous reprend les 5 pièges et les métriques mesurables, ainsi que les 2 métriques du sujet non mesurées à ce jour (indiquées comme telles, pas omises) ; chaque ligne mesurée est vérifiée par une commande reproductible, relancée le 10/08/2026.
 
 | Exigence (section 8) | Cible | Mesure au 10/08/2026 | Commande |
 |---|---|---|---|
@@ -159,6 +161,8 @@ Ce mécanisme se propage dans `fiche_de_faits.py`, qui dégrade explicitement la
 | Couverture jamais présentée comme 100% trompeur | — | **PASS** | `python scripts/harnais_evaluation.py` |
 | Cohérence référentiel SIRENE (stock, enrichissement, orphelins) | 8 contrôles | **8/8** | `python scripts/verification_finale_sirene.py` |
 | Suite de tests | — | **33/33 passed** (31 tests fonctionnels initiaux + 2 tests de régression ajoutés le 10/08 sur un cas de plantage corrigé, cf. `git log`) | `pytest tests/` |
+| Précision de détection du sortant, sur cas connus | mesurée | **Non mesurée** — `tests/test_detecter_sortant.py` ne vérifie que la cohérence structurelle du résultat (2 tests), aucun jeu de cas annotés à réponse connue équivalent à `mesurer_precision_resolution.py` | — (aucun script ne la mesure) |
+| Coût et latence par briefing | mesurés | **Non mesurés** — aucun script du dépôt ne chronomètre ni ne chiffre l'exécution d'un briefing | — (aucun script ne les mesure) |
 
 ## 7. Limites de données assumées
 
@@ -181,6 +185,8 @@ Reprise et mise en contexte de la section « Prochaines étapes » du README (`R
 - **S6 — Agents** (investigation d'identité, expansion pilotée par la couverture, enrichissement web optionnel) : les trois agents justifiés en section 3. Les deux pièges de la section 8 qui en dépendent (changement de raison sociale, centrale d'achat) restent visibles comme `NON IMPLÉMENTÉ` dans `scripts/harnais_evaluation.py` plutôt que masqués, pour que l'écart reste mesurable à chaque exécution du harnais.
 - **Passerelle LLM** : aucune n'est configurée dans ce projet. Prérequis technique aux trois agents S6. Les embeddings (S4) utilisent volontairement un modèle local (`sentence-transformers`) pour ne pas en dépendre ; la verbalisation (S7) reste un gabarit texte strict, pas une génération par LLM.
 - **Pondération acheteur (prix/technique)** : le fait `ponderation_acheteur` existe déjà dans `fiche_de_faits.py` (couverture toujours à 0.0, valeur `"non disponible"`), en attente d'une source de données supplémentaire (ex. règlement de consultation / CCTP du marché) qu'aucun connecteur actuel ne fournit.
+- **Sources BOAMP et Pappers/Infogreffe** (sujet, section 3) : sur les 6 sources recensées par le sujet, seules SIRENE, TED et DECP sont connectées (section 2 ci-dessus). BOAMP (recoupement/détection, exploration à la main demandée dès S1) et Pappers/Infogreffe (santé financière, API payante à couverture partielle selon le sujet) restent à explorer et connecter.
+- **Précision de détection du sortant et coût/latence par briefing** (sujet, section 8) : deux des 6 métriques cibles n'ont pas de script de mesure dédié (cf. section 6 ci-dessus). `detecter_sortant.py` manque d'un jeu de cas annotés à réponse connue équivalent à celui de la résolution d'identité ; aucun script ne mesure le coût ou la latence d'un briefing.
 
 ## Annexe
 
@@ -208,14 +214,14 @@ Mapping S1-S8 repris du texte intégral du sujet (section 6, tableau de déroule
 
 | Semaine | Objectif et livrable (sujet, section 6) | État vérifié | Preuve |
 |---|---|---|---|
-| S1 | Cadrage (exploration TED/DECP/BOAMP, schéma unifié, France seule ou France+UE) → note d'exploration et schéma cible | ✅ | `connectors/sirene.py`, `connectors/decp.py`, `connectors/ted.py` fonctionnels, `db/schema.sql` peuplé ; `pytest tests/test_sirene.py tests/test_decp.py tests/test_ted.py` passe |
+| S1 | Cadrage (exploration TED/DECP/BOAMP, schéma unifié, France seule ou France+UE) → note d'exploration et schéma cible | 🟡 | TED/DECP explorés et connectés (`connectors/ted.py`, `connectors/decp.py`), schéma cible peuplé (`db/schema.sql`) ; **BOAMP non exploré, non connecté** (cf. section 8) ; France seule tranchée en code (`connectors/ted.py`, filtre `buyer-country=FRA`), pas dans une note d'exploration séparée |
 | S2 | Ingestion TED/DECP CPV restreint, bronze/silver/gold, déduplication, versionnement → base interrogeable, volumétrie documentée | ✅ | `pytest tests/test_bronze_silver_gold.py` passe (3 tests) ; volumétrie au README |
 | S3 | SIRENE et résolution d'identité, jeu de test annoté → précision de résolution mesurée | ✅ | 87% global / 97% hors homonymie, cf. section 4 |
 | S4 | Embeddings d'objets de marché, couche graphe, requêtes récursives → marchés similaires et traversées fonctionnels | ✅ | `pytest tests/test_marches_similaires.py tests/test_graphe_concurrentiel.py` passe ; couverture embeddings 100% (cf. README) |
 | S5 | Détection du sortant, fréquences, distributions de prix, profil acheteur, métriques de couverture → fiche de faits complète sur un vrai marché | ✅ | `detecter_sortant.py` + `fiche_de_faits.py`, `pytest tests/test_detecter_sortant.py` passe, cf. section 5 |
 | S6 | Agents d'expansion et d'identité (agent web si le temps le permet) → couverture améliorée sur les cas pauvres | ⛔ | Non implémenté par choix assumé (section 3) ; les 2 pièges qui en dépendent restent `NON IMPLÉMENTÉ` dans `harnais_evaluation.py` |
 | S7 | Verbalisation, porte de vérification, bloc de décision, rapport détaillé → briefing lisible en 30 secondes | ✅ | `verbaliser.py`, `verification_mecanique.py`, `bloc_de_decision.py` ; `pytest tests/test_verification_mecanique.py tests/test_bloc_de_decision.py` passe (8 tests) |
-| S8 | Harnais d'évaluation, mesures, rapport, démonstration → rapport, démo et README | 🟡 | Harnais fonctionnel (8/8, `harnais_evaluation.py`), mesures présentes (`mesurer_precision_resolution.py`, `verification_finale_sirene.py`) ; ce rapport est un premier brouillon non validé ; aucune démonstration (artefact de présentation) n'existe dans le dépôt — non vérifiable depuis le code seul |
+| S8 | Harnais d'évaluation, mesures, rapport, démonstration → rapport, démo et README | 🟡 | Harnais fonctionnel (8/8, `harnais_evaluation.py`), mesures partielles (`mesurer_precision_resolution.py`, `verification_finale_sirene.py` ; **précision du sortant et coût/latence par briefing non mesurés**, cf. section 6) ; ce rapport est un premier brouillon non validé ; aucune démonstration (artefact de présentation) n'existe dans le dépôt — non vérifiable depuis le code seul |
 
 ---
 
