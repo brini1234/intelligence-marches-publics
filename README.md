@@ -66,8 +66,8 @@ Effet mesuré sur la base réelle : **128 acheteurs et 164 couples marché/titul
 Le sujet précise où les vecteurs interviennent, et nulle part ailleurs : *« rapprocher les objets de marché similaires, car les codes CPV sont mal saisis »*. Le reste (filiales, groupements, renouvellements) *« se modélise dans PostgreSQL avec des requêtes récursives »* — pas un moteur de graphe séparé.
 
 - **`pgvector`** (extension requise, section 9) : non disponible via le paquet Homebrew standard sur cette machine (il ne compile que contre postgresql@17/18, alors que le serveur réel tourne en 16). Compilé manuellement contre postgresql@16 (`make PG_CONFIG=.../postgresql@16/bin/pg_config`, méthode officielle du projet pgvector) — nécessite un compte PostgreSQL superutilisateur pour `CREATE EXTENSION` (pas le compte applicatif `stage_user`).
-- **Embeddings** (`scripts/generer_embeddings_marches.py`) : modèle local `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions, sentence-transformers) — aucune passerelle LLM externe n'étant configurée dans ce projet, un modèle local évite toute dépendance à une clé absente, pour une tâche qui n'a pas besoin de la qualité d'un grand modèle. **26 796/26 824 marchés couverts (100% de ceux ayant un objet non vide)**, index HNSW (`idx_marches_objet_embedding`, distance cosinus) créé après peuplement.
-- **`scripts/marches_similaires.py`** : recherche par distance cosinus (`<=>`), retourne toujours un score de similarité — jamais un rapprochement présenté comme aussi certain qu'une correspondance exacte de CPV. Démonstration réelle : un marché TED de « services de transmission de données » retrouve des marchés d'« océanographie et hydrologie » (CPV différent, 71351920 vs le CPV d'origine) avec un score de 0.78 — exactement le piège « CPV mal saisi » du sujet (section 8), désormais **testé automatiquement dans `harnais_evaluation.py` (passe de `NON IMPLÉMENTÉ` à `PASS`)**.
+- **Embeddings** (`scripts/generer_embeddings_marches.py`) : modèle local `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions, sentence-transformers) — aucune passerelle LLM externe n'étant configurée dans ce projet, un modèle local évite toute dépendance à une clé absente, pour une tâche qui n'a pas besoin de la qualité d'un grand modèle. **26 802/26 802 marchés couverts (100% de ceux ayant un objet non vide, sur 26 830 marchés au total)**, index HNSW (`idx_marches_objet_embedding`, distance cosinus) créé après peuplement. Script idempotent : ne recalcule que les `uid` sans embedding, donc sûr à relancer après chaque `construire_gold_marches.py`.
+- **`scripts/marches_similaires.py`** : recherche par distance cosinus (`<=>`), retourne toujours un score de similarité — jamais un rapprochement présenté comme aussi certain qu'une correspondance exacte de CPV. Le piège « CPV mal saisi » du sujet (section 8) est **testé automatiquement dans `harnais_evaluation.py`**, sur un cas découvert dynamiquement à chaque exécution plutôt qu'un exemple figé en dur (les données évoluent) : au 10/08/2026, le marché le plus récent avec embedding (CPV 72267100, maintenance logicielle) retrouve 5 marchés à CPV différent, dont un à un score de 0.91 (CPV 72267000) — au-dessus du seuil de 0.6 retenu par le harnais.
 - **`scripts/graphe_concurrentiel.py`** : requêtes `WITH RECURSIVE` sur les tables déjà en place, pas de nouvelle table de type graphe.
   - `co_titulaires_transitifs(siren, profondeur_max)` : groupements (co-traitance), directs et transitifs. Vérifié sur un accord-cadre réel (9 titulaires) : retrouve un réseau de co-traitance cohérent (ex. Wavestone, BearingPoint, CGI, Talan à profondeur 2).
   - `chaine_marches_acheteur(siret_acheteur, code_cpv)` : séquence chronologique des marchés d'un acheteur — la brique de traversée que S5 branchera sur `detecter_sortant.py` pour une vraie reconstitution de chaîne de renouvellement (pas fait ici : S4 livre la capacité, S5 l'utilisera).
@@ -84,33 +84,33 @@ Le sujet précise où les vecteurs interviennent, et nulle part ailleurs : *« r
 
 Exception assumée : les tables de stock brutes (`sirene_stock_unite_legale`, `sirene_stock_etablissement`) sont entièrement reconstruites à chaque exécution de `importer_stock_sirene_national.py` (`DROP` + `COPY` complet) — ce ne sont pas des données métier, donc leur nettoyage par `nettoyer_stock_sirene.py` n'a pas besoin de sauvegarde horodatée.
 
-## Volumétrie et couverture (au 03/08/2026)
+## Volumétrie et couverture (au 10/08/2026)
 
 Périmètre : services informatiques (CPV 72xxxxxx), France, marchés notifiés/publiés sur une fenêtre de 3 ans, données actuelles uniquement. Deux sources d'attributions (DECP + TED, cf. pipeline ci-dessus). Le référentiel SIRENE reste chargé en totalité (national, tous secteurs).
 
 | Table | Lignes | Rôle |
 |---|---|---|
 | bronze_decp_marches | 29 355 | brut DECP, append-only (26 560 uid distincts — l'écart, ~2 800 lignes, ce sont les modifications successives d'un même marché conservées par versionnement) |
-| bronze_ted_notices | 330 | brut TED, append-only |
-| silver_marches | 26 890 | un marché = une ligne, dédupliqué, validé, résolu (niveaux 1-3) |
-| silver_attributions | 27 227 | un couple marché/titulaire = une ligne (plusieurs par marché possibles), résolu (niveaux 1-3) |
-| acheteurs | 2 604 | gold |
-| marches | 26 824 (26 551 DECP + 273 TED) | gold — silver_marches (26 890) moins 25 sans acheteur exploitable (niveaux 1-3 épuisés) et 41 doublons TED flagués |
-| attributions | 27 164 | gold |
-| entreprises | 5 746 | gold |
-| etablissements | 6 920 | gold |
+| bronze_ted_notices | 666 | brut TED, append-only (336 publication_number distincts — même logique de versionnement qu'au-dessus, après un second chargement le 04/08) |
+| silver_marches | 26 896 | un marché = une ligne, dédupliqué, validé, résolu (niveaux 1-3) |
+| silver_attributions | 27 233 | un couple marché/titulaire = une ligne (plusieurs par marché possibles), résolu (niveaux 1-3) |
+| acheteurs | 2 606 | gold |
+| marches | 26 830 (26 551 DECP + 279 TED) | gold — silver_marches (26 896) moins 25 sans acheteur exploitable (niveaux 1-3 épuisés) et 41 doublons TED flagués |
+| attributions | 27 170 | gold |
+| entreprises | 5 748 | gold |
+| etablissements | 6 922 | gold |
 | sirene_stock_unite_legale | 29 803 585 | référentiel SIRENE |
 | sirene_stock_etablissement | 43 700 154 | référentiel SIRENE |
 
-**Couverture attribution : 24 739/26 824 marchés ont au moins un titulaire relié (92.2%).** Les marchés restants n'ont pas de titulaire relié en base car leur SIRET source est mal formé ou absent et non résolvable même via les niveaux 2/3 ; conformément au principe du sujet de ne jamais fausser une jointure, ces cas sont exclus plutôt qu'insérés avec un SIRET invalide.
+**Couverture attribution : 24 745/26 830 marchés ont au moins un titulaire relié (92.2%).** Les marchés restants n'ont pas de titulaire relié en base car leur SIRET source est mal formé ou absent et non résolvable même via les niveaux 2/3 ; conformément au principe du sujet de ne jamais fausser une jointure, ces cas sont exclus plutôt qu'insérés avec un SIRET invalide.
 
 **Déduplication inter-sources : 41 doublons probables DECP/TED détectés et flagués** (même acheteur, préfixe CPV, montant à moins de 1%, date à moins de 30 jours) — visibles dans `silver_marches.doublon_probable_de` pour audit, exclus de `marches` pour ne pas compter deux fois le même marché. En hausse par rapport à avant la résolution d'identité (22) : plus d'acheteurs/titulaires résolus, plus de correspondances DECP/TED détectables.
 
 **Correction notable apportée par la séparation silver_marches / silver_attributions** : l'ancien pipeline (avant l'architecture bronze/silver/gold) pouvait perdre des titulaires sur les accords-cadres à attributaires multiples (`ON CONFLICT DO NOTHING` sur un seul SIRET titulaire par marché, ordre non déterministe). Un accord-cadre réel du périmètre a par exemple 9 titulaires distincts pour le même `uid` — tous désormais correctement conservés dans `silver_attributions`/`attributions`.
 
-**Répartition des méthodes de résolution en gold (`attributions`)** : `siret_exact` 27 034, `flou` 76, `espaces` 30, `siren_seul` 14, `etranger` 6, `siret_exact_segmente` 3, `tva_fr` 1.
+**Répartition des méthodes de résolution en gold (`attributions`)** : `siret_exact` 27 034, `flou` 80, `espaces` 31, `siren_seul` 15, `etranger` 6, `siret_exact_segmente` 3, `tva_fr` 1.
 
-**Couverture SIRENE (`scripts/verification_finale_sirene.py`) : 8/8.** Stock national chargé en totalité, sans doublon de clé ; 100% des 5 746 entreprises ont un statut connu ; `etablissements` couvre 99% des SIRET titulaires réels (6 920/7 006) ; aucune dénomination vide, aucun établissement orphelin. **Le piège « concurrent hors France » (section 8 du sujet) se déclenche désormais réellement** : 5 entreprises marquées `ETRANGER` (détectées via la résolution d'identité niveau 2 sur des TVA intracommunautaires étrangères côté TED — invisibles avant, car ces identifiants ne matchaient jamais le niveau 1 et étaient simplement exclus). Le harnais d'évaluation confirme le déclenchement effectif (`déclaré=True, dégradé=True, compté=True`), plus un `SKIP` en attente.
+**Couverture SIRENE (`scripts/verification_finale_sirene.py`) : 8/8.** Stock national chargé en totalité, sans doublon de clé ; 100% des 5 748 entreprises ont un statut connu ; `etablissements` couvre 99% des SIRET titulaires réels (6 922/7 008) ; aucune dénomination vide, aucun établissement orphelin. **Le piège « concurrent hors France » (section 8 du sujet) se déclenche désormais réellement** : 5 entreprises marquées `ETRANGER` (détectées via la résolution d'identité niveau 2 sur des TVA intracommunautaires étrangères côté TED — invisibles avant, car ces identifiants ne matchaient jamais le niveau 1 et étaient simplement exclus). Le harnais d'évaluation confirme le déclenchement effectif (`déclaré=True, dégradé=True, compté=True`).
 
 ## Limites de données connues
 
@@ -119,8 +119,16 @@ Périmètre : services informatiques (CPV 72xxxxxx), France, marchés notifiés/
 - **Chevauchement DECP/TED** : un même marché au-dessus des seuils européens peut légitimement apparaître à la fois dans DECP et dans TED. Détecté et flagué (`doublon_probable_de`) plutôt que silencieusement dupliqué — 41 cas identifiés sur ce périmètre. La ligne DECP est retenue comme référence (SIRET titulaire plus fiable, section 3 du sujet), la ligne TED reste visible en silver pour audit mais n'entre pas dans `marches`.
 - **TED : dates simplifiées** — `date_notification` et `date_publication` prennent la même valeur (`publication-date` de l'avis TED), TED ne distinguant pas ces deux dates au niveau du champ testé, contrairement à DECP. `duree_mois`/`duree_restante_mois` restent `NULL` pour les marchés TED : l'API ne renvoie pas de durée simple exploitable à ce niveau d'agrégation, et aucune durée n'est inférée pour ne pas fabriquer une donnée absente.
 - 7 entreprises marquées `INTROUVABLE_API` (404 sur l'API Sirene) : non résolvables via le référentiel SIRENE au moment du passage — à traiter par un futur agent d'investigation d'identité hors SIRENE plutôt que retentées en boucle.
-- 86 SIRET titulaires (7 006 − 6 920) sans établissement correspondant dans le stock national : établissement fermé/radié avant l'historique disponible, ou SIRET mal saisi côté source.
+- 86 SIRET titulaires (7 008 − 6 922) sans établissement correspondant dans le stock national : établissement fermé/radié avant l'historique disponible, ou SIRET mal saisi côté source.
 - L'API Sirene applique une limite d'environ 30 requêtes/minute (au-delà : `429 Too Many Requests`) ; `completer_via_api_sirene.py` respecte ce débit et peut nécessiter plusieurs passages successifs sur un gros résidu.
 - **Rapprochement flou lent sur les noms courts/fréquents** : une requête `similarity()` contre 29,8M lignes peut prendre de 1 à 20 secondes selon la rareté du nom, même avec l'index trigram (`idx_sirene_stock_unite_legale_denom_trgm`) et le seuil `pg_trgm.similarity_threshold` relevé au niveau du seuil d'acceptation. Pas de cache entre appels identiques au sein d'une même exécution — acceptable pour le volume actuel (quelques centaines de résolutions par run), à revoir si le volume grossit significativement.
 - **Bronze non purgé automatiquement** : chaque exécution de `charger_bronze_decp.py`/`charger_bronze_ted.py` ajoute des lignes (c'est le versionnement voulu) sans jamais en supprimer — sur de nombreuses ré-exécutions successives sans changement source, `bronze_decp_marches` grossit sans purge automatique des versions anciennes. Acceptable à l'échelle du stage (8 semaines) ; une politique de rétention serait nécessaire en production.
 - Sauvegardes horodatées disponibles en base : `backup_*_20260803` (recadrage national → CPV72), `backup_*_pre_bsg_20260803` (avant reconstruction bronze/silver/gold) et `backup_*_pre_s3_20260803` (avant résolution d'identité) — conservées par sécurité, non utilisées par le pipeline.
+
+## Prochaines étapes (hors périmètre assumé de cette livraison)
+
+Deux points du sujet ne sont volontairement pas construits à ce stade — limites assumées, pas oubliées :
+
+- **S6 — Agents** : le sujet prévoit trois agents (niveau 4 de résolution d'identité pour l'homonymie non résoluble par le nom seul, cf. section ci-dessus ; détection d'un marché passé par une centrale d'achat ; suivi d'un changement de raison sociale). Aucun n'est implémenté. `scripts/harnais_evaluation.py` les liste explicitement comme `NON IMPLÉMENTÉ` (jamais masqués en `PASS`), pour qu'ils restent visibles comme travail restant plutôt que silencieusement omis.
+- **Passerelle LLM** : aucune passerelle vers un grand modèle de langage n'est configurée dans ce projet. Les embeddings (S4) utilisent un modèle local pour cette raison (cf. section dédiée). La verbalisation (S7, `scripts/verbaliser.py`) reste un gabarit texte strict, pas une génération par LLM. Une passerelle serait le prérequis technique aux trois agents S6 ci-dessus.
+- **Pondération acheteur (prix/technique)** : le fait `ponderation_acheteur` existe dans `scripts/fiche_de_faits.py` mais vaut toujours `"non disponible"` (couverture 0.0) — aucune source connectée (DECP, TED) ne publie les critères de pondération d'un marché. Non résolvable sans une source de données supplémentaire (ex. RC/CCTP du marché), hors périmètre des connecteurs actuels.
