@@ -1,6 +1,6 @@
 # Rapport de stage — Intelligence concurrentielle sur les marchés publics
 
-**Périmètre couvert par ce rapport :** S1 à S5, S7 (verbalisation, porte de vérification, bloc de décision), et la partie de S8 réellement construite (harnais d'évaluation, ce rapport). S6 (agents) et la passerelle LLM sont hors périmètre de cette livraison — documentés en section 8 (Pistes d'extension), pas construits.
+**Périmètre couvert par ce rapport :** S1 (partiel — BOAMP non exploré, cf. annexe B) à S5, S7 (verbalisation, porte de vérification, bloc de décision), et la partie de S8 réellement construite (harnais d'évaluation, ce rapport). S6 (agents) et la passerelle LLM sont hors périmètre de cette livraison — documentés en section 8 (Pistes d'extension), pas construits.
 
 **Date de rédaction :** 10/08/2026. Tous les chiffres de ce rapport ont été obtenus en relançant les commandes citées à cette date, sur l'état actuel du dépôt et de la base ; chaque chiffre est accompagné de la commande qui permet de le revérifier.
 
@@ -89,7 +89,7 @@ flowchart TB
 
 ## 3. Frontière déterministe / agentique, et sa justification
 
-Tout ce qui est construit dans ce projet (S1 à S5, S7, la partie faite de S8) est du **code déterministe** : requêtes SQL, règles de normalisation par expression régulière, seuils numériques fixes, gabarit de texte strict (`verbaliser.py` ne contient aucune génération libre, uniquement des f-strings sur des valeurs déjà validées). Rejouer le pipeline sur les mêmes données produit exactement le même résultat.
+Tout ce qui est construit dans ce projet (S1 partiel à S5, S7, la partie faite de S8 — cf. annexe B pour le détail par semaine) est du **code déterministe** : requêtes SQL, règles de normalisation par expression régulière, seuils numériques fixes, gabarit de texte strict (`verbaliser.py` ne contient aucune génération libre, uniquement des f-strings sur des valeurs déjà validées). Rejouer le pipeline sur les mêmes données produit exactement le même résultat.
 
 Le sujet (section 4) prévoit exactement **trois agents**, aucun n'est construit dans ce périmètre. `scripts/harnais_evaluation.py` (fonction `cas_non_implementes`) liste explicitement les deux pièges de la section 8 qui en dépendent, sans les simuler par une règle fragile :
 
@@ -97,7 +97,7 @@ Le sujet (section 4) prévoit exactement **trois agents**, aucun n'est construit
 2. **Expansion pilotée par la couverture** — « si la couverture est insuffisante, l'agent décide comment élargir la recherche (acheteurs comparables, périmètre géographique, CPV parent, fenêtre temporelle), réévalue, et sait conclure que les données sont insuffisantes ». Couvre le piège « **marché passé par une centrale d'achat** → limite de couverture signalée » : un marché notifié par une centrale d'achat est rattaché en base au SIRET de la centrale, pas à l'organisme réellement bénéficiaire ; reconnaître ce cas et décider d'élargir la recherche ou de signaler la limite est un jugement contextuel, pas une jointure.
 3. **Enrichissement web** — seul cas où une recherche sur corpus ouvert est justifiée selon le sujet, conçu en dégradation gracieuse (un échec ne dégrade jamais le briefing en dessous de ce que les sources structurées permettent déjà). Le déroulement du sujet (section 6) le rend explicitement optionnel pour S6 (*« agent web si le temps le permet »*) ; il n'est associé à aucun piège spécifique de la section 8.
 
-Ce choix de périmètre est défendable comme une **frontière de nature**, pas seulement une limite de temps : les parties construites (S1-S5, S7, S8 partiel) sont toutes des transformations reproductibles d'une donnée déjà présente en base vers une autre donnée déterminée sans ambiguïté par des règles fixes. Les trois agents ci-dessus demandent au contraire de peser des indices contradictoires ou incomplets et d'assumer un jugement — exactement la distinction que `scripts/harnais_evaluation.py` matérialise en listant les deux pièges dépendants comme `NON IMPLÉMENTÉ` plutôt que de les simuler.
+Ce choix de périmètre est défendable comme une **frontière de nature**, pas seulement une limite de temps : les parties construites (S1 partiel, S2-S5, S7, S8 partiel) sont toutes des transformations reproductibles d'une donnée déjà présente en base vers une autre donnée déterminée sans ambiguïté par des règles fixes. Les trois agents ci-dessus demandent au contraire de peser des indices contradictoires ou incomplets et d'assumer un jugement — exactement la distinction que `scripts/harnais_evaluation.py` matérialise en listant les deux pièges dépendants comme `NON IMPLÉMENTÉ` plutôt que de les simuler.
 
 ## 4. Résolution d'identité
 
@@ -147,18 +147,20 @@ Ce mécanisme se propage dans `fiche_de_faits.py`, qui dégrade explicitement la
 
 ## 6. Métriques
 
-**Le sujet a été fourni en texte intégral au cours de cette rédaction** (section 8 : tableau de 6 métriques — taux d'affirmations sourcées, taux d'hallucination, précision résolution d'identité, précision détection du sortant, couverture, coût/latence par briefing — et 5 pièges de démonstration). Le tableau ci-dessous reprend les 5 pièges et les métriques mesurables, ainsi que les 2 métriques du sujet non mesurées à ce jour (indiquées comme telles, pas omises) ; chaque ligne mesurée est vérifiée par une commande reproductible, relancée le 10/08/2026.
+**Le sujet a été fourni en texte intégral au cours de cette rédaction** (section 8 : tableau de 6 métriques — taux d'affirmations sourcées, taux d'hallucination, précision résolution d'identité, précision détection du sortant, couverture, coût/latence par briefing — et 5 pièges de démonstration). Le tableau ci-dessous reprend l'intégralité des 5 pièges et des 6 métriques : mesurées par un script quand c'est possible, garanties par construction du code sinon, ou signalées explicitement comme non mesurées — jamais omises. Chaque ligne mesurée est vérifiée par une commande reproductible, relancée le 10/08/2026.
 
 | Exigence (section 8) | Cible | Mesure au 10/08/2026 | Commande |
 |---|---|---|---|
 | Précision résolution d'identité (France) | > 90% | **87%** global / **97%** hors homonymie | `python scripts/mesurer_precision_resolution.py` |
+| Piège « Acheteur sans historique » → données insuffisantes | déclenchement réel | **PASS** | `python scripts/harnais_evaluation.py` |
 | Piège « Concurrent hors France » → dégradé + déclaré | déclenchement réel, pas simulé | **PASS** — déclaré=True, dégradé=True (couverture=0.33), compté=True | `python scripts/harnais_evaluation.py` |
 | Piège « CPV mal saisi » → complété par similarité | déclenchement réel | **PASS** — cas découvert dynamiquement (CPV 72267100), 5 marchés à CPV différent retournés avec score, meilleur cas ≥ 0.6 trouvé | `python scripts/harnais_evaluation.py` |
 | Piège « Changement de raison sociale » → résolution correcte OU doute signalé | — | **NON IMPLÉMENTÉ** (agent Investigation d'identité, S6, hors périmètre — cf. section 3) | `python scripts/harnais_evaluation.py` |
 | Piège « Marché passé par une centrale d'achat » → limite de couverture signalée | — | **NON IMPLÉMENTÉ** (agent Expansion pilotée par la couverture, S6, hors périmètre — cf. section 3) | `python scripts/harnais_evaluation.py` |
-| Bloc de décision ≤ 10 lignes | ≤ 10 lignes | **PASS** — 8 lignes sur le cas testé | `python scripts/harnais_evaluation.py` |
+| Taux d'affirmations sourcées | 100% | **100% par construction** — chaque entrée de `faits` dans `fiche_de_faits.py` porte un champ `provenance` non vide, sans exception dans le code (pas de branche produisant une valeur sans provenance) | — (garanti par la structure du code, aucun script ne calcule de taux) |
 | Anti-hallucination (aucun chiffre non sourcé dans le texte généré) | 0 chiffre non justifié | **PASS** | `python scripts/harnais_evaluation.py` (+ `pytest tests/test_verification_mecanique.py`) |
 | Couverture jamais présentée comme 100% trompeur | — | **PASS** | `python scripts/harnais_evaluation.py` |
+| Bloc de décision ≤ 10 lignes | ≤ 10 lignes | **PASS** — 8 lignes sur le cas testé | `python scripts/harnais_evaluation.py` |
 | Cohérence référentiel SIRENE (stock, enrichissement, orphelins) | 8 contrôles | **8/8** | `python scripts/verification_finale_sirene.py` |
 | Suite de tests | — | **33/33 passed** (31 tests fonctionnels initiaux + 2 tests de régression ajoutés le 10/08 sur un cas de plantage corrigé, cf. `git log`) | `pytest tests/` |
 | Précision de détection du sortant, sur cas connus | mesurée | **Non mesurée** — `tests/test_detecter_sortant.py` ne vérifie que la cohérence structurelle du résultat (2 tests), aucun jeu de cas annotés à réponse connue équivalent à `mesurer_precision_resolution.py` | — (aucun script ne la mesure) |
