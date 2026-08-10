@@ -34,3 +34,15 @@ def test_fiche_contient_les_5_elements_du_bloc_de_decision():
     assert "fourchette_prix_min" in cles
     assert "fourchette_prix_max" in cles
     assert "ponderation_acheteur" in cles
+
+
+def test_verbaliser_gere_famille_sans_aucun_montant_publie():
+    # Cas réel (marché TED sans montant) : aucun montant sur toute la
+    # famille -> ne doit jamais planter en formatant None comme un nombre,
+    # et la couverture du fait doit rester honnête (0%, pas fabriquée).
+    fiche = construire_fiche_de_faits("13000208200043", "72267000")
+    valeurs = {f["cle"]: f for f in fiche["faits"]}
+    assert valeurs["fourchette_prix_min"]["valeur"] is None
+    assert valeurs["fourchette_prix_min"]["couverture"] == 0.0
+    texte = verbaliser(fiche)
+    assert "non disponible" in texte

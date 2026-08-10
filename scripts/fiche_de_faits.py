@@ -88,10 +88,15 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
         else:
             concurrents.append(f"{nom} ({frequence})")
 
-    # Fourchette de prix observée sur toute la famille de marchés
+    # Fourchette de prix observée sur toute la famille de marchés. Aucun
+    # montant publié sur toute la famille (ex. marchés TED sans montant
+    # renseigné) -> couverture nulle, jamais un chiffre fabriqué ni une
+    # couverture non nulle sur une valeur absente (même principe que
+    # couverture_expiration ci-dessus).
     montants = [h["montant"] for h in historique if h["montant"] is not None]
     prix_min = min(montants) if montants else None
     prix_max = max(montants) if montants else None
+    couverture_prix = score if montants else 0.0
 
     # Couverture du fait "concurrents_observes" : dégradée si au moins un
     # concurrent hors France est présent, car son identité/activité n'a pas
@@ -148,13 +153,13 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
             "cle": "fourchette_prix_min",
             "valeur": prix_min,
             "provenance": "MIN(montant) sur marches de la même famille",
-            "couverture": score,
+            "couverture": couverture_prix,
         },
         {
             "cle": "fourchette_prix_max",
             "valeur": prix_max,
             "provenance": "MAX(montant) sur marches de la même famille",
-            "couverture": score,
+            "couverture": couverture_prix,
         },
         {
             "cle": "ponderation_acheteur",

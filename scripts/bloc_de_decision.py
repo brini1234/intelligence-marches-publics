@@ -29,6 +29,10 @@ def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur
     prix_min = valeurs["fourchette_prix_min"]["valeur"]
     prix_max = valeurs["fourchette_prix_max"]["valeur"]
     n = valeurs["nombre_marches_historique"]["valeur"]
+    if prix_min is None or prix_max is None:
+        fourchette_txt = f"non disponible (n={n}, aucun montant publié sur cette famille)"
+    else:
+        fourchette_txt = f"{prix_min:,.0f} € — {prix_max:,.0f} € (n={n}, indicatif)"
 
     lignes = [
         f"Acheteur : {nom_acheteur or siret_acheteur} | Objet CPV : {code_cpv}",
@@ -37,7 +41,7 @@ def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur
         f"(dernier marché: {valeurs['date_dernier_marche']['valeur']}) "
         f"(couverture: {pct('date_expiration_estimee')})",
         f"Concurrents observés : {concurrents_txt} (couverture: {pct('concurrents_observes')})",
-        f"Fourchette de prix : {prix_min:,.0f} € — {prix_max:,.0f} € (n={n}, indicatif) "
+        f"Fourchette de prix : {fourchette_txt} "
         f"(couverture: {pct('fourchette_prix_min')})",
         f"Pondération de l'acheteur : {valeurs['ponderation_acheteur']['valeur']} "
         f"(couverture: {pct('ponderation_acheteur')})",

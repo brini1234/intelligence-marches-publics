@@ -15,12 +15,14 @@ def verbaliser(fiche: dict) -> str:
     # Formulation conforme au sujet (section 2) : jamais "Prix du marché : X EUR"
     # (faux, ponctuel), toujours une fourchette avec taille d'échantillon et la
     # mention "indicatif" — un prix constaté sur d'autres marchés n'est jamais
-    # une prédiction du prix futur.
+    # une prédiction du prix futur. Aucun montant publié sur la famille (ex.
+    # marchés TED) -> dit explicitement, jamais un chiffre fabriqué.
     n = valeurs["nombre_marches_historique"]
-    fourchette_txt = (
-        f"{valeurs['fourchette_prix_min']:.0f} € à {valeurs['fourchette_prix_max']:.0f} € "
-        f"(n={n}, indicatif)"
-    )
+    prix_min, prix_max = valeurs["fourchette_prix_min"], valeurs["fourchette_prix_max"]
+    if prix_min is None or prix_max is None:
+        fourchette_txt = f"non disponible (n={n}, aucun montant publié sur cette famille)"
+    else:
+        fourchette_txt = f"{prix_min:.0f} € à {prix_max:.0f} € (n={n}, indicatif)"
 
     texte = (
         f"Titulaire actuel probable : {valeurs['titulaire_actuel']} "
