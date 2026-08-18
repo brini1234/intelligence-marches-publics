@@ -100,10 +100,16 @@ def _regrouper_en_generations(chaine: list[dict]) -> list[dict]:
     return resultat
 
 
-def detecter_sortant(siret_acheteur: str, code_cpv: str) -> dict:
+def detecter_sortant(siret_acheteur: str, code_cpv: str, cpv_en_prefixe: bool = False) -> dict:
     """
     Pour un acheteur et un code CPV donnés, identifie le titulaire probable actuel (le "sortant")
     et reconstitue la chaîne de renouvellement (sujet, section 4) :
+
+    cpv_en_prefixe=True : `code_cpv` est traité comme un préfixe (LIKE) plutôt
+    qu'une égalité exacte — utilisé uniquement par
+    scripts/agent_expansion_couverture.py (axe "CPV parent" de l'agent
+    d'expansion) pour élargir la famille de marchés sans dupliquer cette
+    fonction.
 
     - "famille" de marchés = même acheteur, même code CPV (le rapprochement
       par objet sémantiquement proche malgré un CPV différent est un
@@ -127,19 +133,21 @@ def detecter_sortant(siret_acheteur: str, code_cpv: str) -> dict:
       France" du sujet (section 8).
     """
     engine = get_engine()
+    condition_cpv = "m.code_cpv LIKE :code_cpv" if cpv_en_prefixe else "m.code_cpv = :code_cpv"
+    parametre_cpv = f"{code_cpv}%" if cpv_en_prefixe else code_cpv
 
     with engine.connect() as connexion:
-        resultats = connexion.execute(text("""
+        resultats = connexion.execute(text(f"""
             SELECT m.uid, m.objet, m.montant, m.date_notification, m.duree_mois, m.duree_restante_mois,
                    a.siren_titulaire, e.denomination, e.etat_administratif
             FROM marches m
             JOIN attributions a ON a.uid_marche = m.uid
             JOIN entreprises e ON e.siren = a.siren_titulaire
-            WHERE m.siret_acheteur = :siret_acheteur AND m.code_cpv = :code_cpv
+            WHERE m.siret_acheteur = :siret_acheteur AND {condition_cpv}
             ORDER BY m.date_notification DESC
         """), {
             "siret_acheteur": siret_acheteur,
-            "code_cpv": code_cpv,
+            "code_cpv": parametre_cpv,
         }).mappings().all()
 
         if not resultats:

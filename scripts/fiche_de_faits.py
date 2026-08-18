@@ -3,7 +3,14 @@ sys.path.append(".")
 
 from collections import Counter
 
+from db.connection import get_engine
 from scripts.detecter_sortant import detecter_sortant
+from scripts.agent_expansion_couverture import (
+    agent_expansion_couverture,
+    construire_message_centrale_achat,
+    detecter_centrale_achat,
+    SEUIL_COUVERTURE_SUFFISANTE,
+)
 
 SCORES_COUVERTURE = {
     "élevée": 1.0,
@@ -26,7 +33,45 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
     conforme au bloc de décision exigé : sortant, concurrents, fourchette de
     prix, pondération de l'acheteur (non couverte), couverture globale.
     """
+    # Piège du sujet (section 8) : "marché passé par une centrale d'achat ->
+    # limite de couverture signalée". Vérifié EN PREMIER et INCONDITIONNELLEMENT
+    # (pas seulement quand la couverture est faible) : la limite tient à
+    # l'identité de l'acheteur (le SIRET en base est celui de la centrale,
+    # jamais de l'organisme bénéficiaire réel), pas au volume de marchés
+    # retrouvés sous ce SIRET. Une centrale comme l'UGAP a typiquement BEAUCOUP
+    # de marchés — la gater derrière un seuil de couverture faible la aurait
+    # rendue muette sur le cas courant et ne se serait déclenchée que par
+    # coïncidence, jamais correctement pour ce piège précis.
+    engine = get_engine()
+    with engine.connect() as connexion:
+        centrale = detecter_centrale_achat(siret_acheteur, connexion)
+    if centrale is not None:
+        return {
+            "faits": [],
+            "couverture_globale": 0.0,
+            "raison": construire_message_centrale_achat(centrale),
+        }
+
     resultat = detecter_sortant(siret_acheteur, code_cpv)
+    expansions_appliquees: list[dict] = []
+
+    # Agent "Expansion pilotée par la couverture" (sujet, section 4 et 6, S6 :
+    # scripts/agent_expansion_couverture.py) : déclenché uniquement quand la
+    # requête directe est pauvre (couverture insuffisante) — jamais sur un
+    # résultat déjà satisfaisant, pour ne pas alourdir le cas courant.
+    if resultat.get("nb_marches_famille", 0) < SEUIL_COUVERTURE_SUFFISANTE:
+        expansion = agent_expansion_couverture(siret_acheteur, code_cpv)
+
+        if expansion["type"] == "donnees_insuffisantes":
+            return {
+                "faits": [],
+                "couverture_globale": 0.0,
+                "raison": expansion["message"],
+            }
+
+        resultat = expansion["resultat_sortant"]
+        expansions_appliquees = expansion["expansions_appliquees"]
+
     score = SCORES_COUVERTURE.get(resultat["confiance"], 0.0)
 
     if resultat["sortant_probable"] is None:
@@ -168,6 +213,20 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
             "couverture": 0.0,
         },
     ]
+
+    # Trace de l'agent d'expansion (sujet, section 8 : le harnais doit pouvoir
+    # vérifier que l'élargissement a bien eu lieu sans parser le texte final).
+    # Couverture volontairement dégradée (0.5, même principe que
+    # couverture_expiration inférée par médiane CPV) : le résultat repose sur
+    # un périmètre plus large que l'acheteur/CPV exact demandé, donc moins
+    # spécifique, jamais présenté avec la même certitude qu'une requête directe.
+    if expansions_appliquees:
+        faits.append({
+            "cle": "elargissement_applique",
+            "valeur": "; ".join(f"{e['axe']}: {e['valeur']}" for e in expansions_appliquees),
+            "provenance": "agent d'expansion pilotée par la couverture (scripts/agent_expansion_couverture.py)",
+            "couverture": 0.5,
+        })
 
     # Fait explicite (compté, jamais approximé) pour la déclaration exigée par
     # le sujet et pour que le harnais puisse vérifier automatiquement que le

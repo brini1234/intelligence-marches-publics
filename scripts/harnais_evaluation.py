@@ -14,6 +14,8 @@ from db.connection import get_engine
 ACHETEUR_TEST = "11000028800016"  # Cour des Comptes
 CPV_TEST = "72220000"             # Conseil en systèmes informatiques
 
+SIRET_UGAP = "77605646700587"  # centrale d'achat réelle, glossaire sujet section 11
+
 resultats = []
 
 
@@ -186,13 +188,30 @@ def test_cpv_mal_saisi_complete_par_similarite():
     )
 
 
+def test_centrale_achat_signale_limite_couverture():
+    """
+    Piège du sujet (section 8) : un marché notifié par une centrale d'achat
+    (ex. UGAP) doit toujours déclencher "limite de couverture signalée",
+    quel que soit le volume de marchés retrouvés sous son SIRET (une
+    centrale en a typiquement beaucoup) — jamais un faux "sortant probable"
+    silencieusement présenté comme fiable.
+    """
+    fiche = construire_fiche_de_faits(SIRET_UGAP, CPV_TEST)
+    ok = fiche["faits"] == [] and "centrale d'achat" in fiche.get("raison", "").lower()
+    enregistrer(
+        "Marché passé par une centrale d'achat -> limite de couverture signalée",
+        ok,
+        fiche.get("raison", "")[:100] if ok else str(fiche)[:200],
+    )
+
+
 def cas_non_implementes():
     """
-    Pièges du sujet (section 8) qui dépendent des 3 agents, pas encore construits.
-    Listés explicitement pour ne jamais masquer ce qui manque.
+    Pièges du sujet (section 8) qui dépendent d'un agent pas encore construit
+    (investigation d'identité). Listés explicitement pour ne jamais masquer
+    ce qui manque.
     """
     return [
-        "Marché passé par une centrale d'achat -> limite de couverture signalée",
         "Changement de raison sociale -> résolution correcte ou doute signalé",
     ]
 
@@ -210,6 +229,7 @@ def executer():
     test_bloc_de_decision_respecte_le_format()
     test_concurrent_hors_france_degrade_et_declare()
     test_cpv_mal_saisi_complete_par_similarite()
+    test_centrale_achat_signale_limite_couverture()
 
     print("\n--- Cas testés et automatisés ---")
     nb_echecs = 0
@@ -227,7 +247,9 @@ def executer():
 
     print("\n" + "=" * 70)
     print(f"Résultat : {len(resultats) - nb_echecs}/{len(resultats)} vérifications automatisées réussies")
-    print(f"{len(cas_non_implementes())} cas restent à couvrir par les futurs agents")
+    nb_restants = len(cas_non_implementes())
+    verbe = "reste" if nb_restants <= 1 else "restent"
+    print(f"{nb_restants} cas {verbe} à couvrir par les futurs agents")
     print("=" * 70)
 
     return nb_echecs == 0
