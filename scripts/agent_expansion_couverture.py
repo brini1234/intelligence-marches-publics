@@ -170,7 +170,14 @@ def agent_expansion_couverture(siret_acheteur: str, code_cpv: str) -> dict:
     expansions: list[dict] = []
 
     # Axe 1 : CPV parent — seul axe qui peut changer le sortant retourné.
-    if resultat["nb_marches_famille"] < SEUIL_COUVERTURE_SUFFISANTE:
+    # .get(..., 0) partout ici : detecter_sortant() ne porte PAS la clé
+    # "nb_marches_famille" dans son retour minimal (aucun marché trouvé pour
+    # l'acheteur/CPV exact demandé — le cas normal quand un acheteur connu
+    # n'a simplement jamais utilisé ce CPV précis) ; un accès direct par
+    # crochets y plantait (KeyError, trouvé par revue de code indépendante
+    # le 20/08/2026, reproduit sur un acheteur réel interrogé avec un CPV
+    # hors de son historique).
+    if resultat.get("nb_marches_famille", 0) < SEUIL_COUVERTURE_SUFFISANTE:
         for longueur in CPV_LONGUEURS_PARENT:
             if longueur >= len(code_cpv):
                 continue
@@ -179,11 +186,11 @@ def agent_expansion_couverture(siret_acheteur: str, code_cpv: str) -> dict:
             expansions.append({
                 "axe": "cpv_parent",
                 "valeur": prefixe,
-                "effet": f"{candidat['nb_marches_famille']} marché(s) trouvé(s)",
+                "effet": f"{candidat.get('nb_marches_famille', 0)} marché(s) trouvé(s)",
             })
-            if candidat["nb_marches_famille"] > resultat["nb_marches_famille"]:
+            if candidat.get("nb_marches_famille", 0) > resultat.get("nb_marches_famille", 0):
                 resultat = candidat
-            if resultat["nb_marches_famille"] >= SEUIL_COUVERTURE_SUFFISANTE:
+            if resultat.get("nb_marches_famille", 0) >= SEUIL_COUVERTURE_SUFFISANTE:
                 break
 
     # Axes 2/3 : acheteurs comparables, département puis national — n'élargissent

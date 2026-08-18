@@ -46,3 +46,16 @@ def test_agent_elargit_une_famille_pauvre():
     assert resultat["type"] == "resultat"
     assert any(e["axe"] == "cpv_parent" for e in resultat["expansions_appliquees"])
     assert resultat["resultat_sortant"]["nb_marches_famille"] > 1
+
+
+def test_agent_ne_plante_pas_sur_acheteur_connu_avec_zero_marche_sur_le_cpv_exact():
+    # Régression (bug trouvé par revue de code indépendante le 20/08/2026) :
+    # detecter_sortant() ne porte pas la clé "nb_marches_famille" dans son
+    # retour minimal quand aucun marché n'est trouvé pour l'acheteur/CPV
+    # exact demandé -- un accès direct par crochets plantait (KeyError) dès
+    # qu'un acheteur connu (a un historique global) était interrogé sur un
+    # CPV qu'il n'a jamais utilisé, le cas le plus courant en pratique.
+    # Cour des Comptes a un historique réel (13 marchés) mais aucun sur ce
+    # CPV précis.
+    resultat = agent_expansion_couverture("11000028800016", "45000000")
+    assert resultat["type"] in ("resultat", "donnees_insuffisantes")

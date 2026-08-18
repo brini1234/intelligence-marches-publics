@@ -144,7 +144,7 @@ def detecter_sortant(siret_acheteur: str, code_cpv: str, cpv_en_prefixe: bool = 
             JOIN attributions a ON a.uid_marche = m.uid
             JOIN entreprises e ON e.siren = a.siren_titulaire
             WHERE m.siret_acheteur = :siret_acheteur AND {condition_cpv}
-            ORDER BY m.date_notification DESC
+            ORDER BY m.date_notification DESC, a.siren_titulaire ASC
         """), {
             "siret_acheteur": siret_acheteur,
             "code_cpv": parametre_cpv,
@@ -205,6 +205,15 @@ def detecter_sortant(siret_acheteur: str, code_cpv: str, cpv_en_prefixe: bool = 
 
         ratio_coherence = (transitions_coherentes / transitions_total) if transitions_total else None
 
+        # Si le marché le plus récent est un accord-cadre à plusieurs
+        # titulaires notifié en une seule fois, plusieurs lignes sont à
+        # égalité sur date_notification : le tie-break explicite
+        # (siren_titulaire ASC, dans la requête ci-dessus) rend ce choix
+        # reproductible d'une exécution à l'autre, mais reste un choix
+        # arbitraire parmi des co-titulaires réels — limite assumée,
+        # trouvée par revue de code indépendante le 20/08/2026 (l'ancien
+        # ORDER BY sans tie-break faisait dépendre le sortant retourné du
+        # plan d'exécution PostgreSQL, non garanti par le SQL standard).
         marche_actuel = resultats[0]
         nb_marches_famille = len(marches_par_uid)
 

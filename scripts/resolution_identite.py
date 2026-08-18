@@ -272,8 +272,13 @@ def resoudre(
         # actuelle, pas une supposition.
         return [resultat_flou]
 
-    # Ici : niveau 3 ambigu (candidats à égalité) OU totalement vide.
-    # Niveau 4a (continuité, gratuit) d'abord si un contexte acheteur existe.
+    # Ici : niveau 3 ambigu (candidats à égalité), totalement vide, ou un
+    # candidat unique dont le SIREN n'a aucun établissement siège en base
+    # (resoudre_siren_vers_siret_siege renvoie None sans que ce soit un cas
+    # "ambigu" — vérifié : 21 696 SIREN sur 29,8M du stock national sont
+    # dans ce cas). Dans les trois cas, aucun SIRET exploitable n'est
+    # encore disponible ; niveau 4a (continuité, gratuit) d'abord si un
+    # contexte acheteur existe.
     if resultat_flou and resultat_flou.get("ambigu") and siret_acheteur:
         resultat_continuite = resoudre_par_continuite_acheteur(
             resultat_flou["candidats_ambigus"], siret_acheteur, connexion

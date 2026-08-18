@@ -28,7 +28,7 @@ Cette opération ne touche à aucune donnée (juste un fichier de verrou systèm
 ```bash
 # 2. Suite de tests complète (~1-2 min)
 pytest tests/ -q
-# attendu : 38 passed
+# attendu : 44 passed
 
 # 3. Harnais d'évaluation (pièges de démonstration du sujet)
 python scripts/harnais_evaluation.py
@@ -149,4 +149,5 @@ Résultat vérifié : `{'siret': '38012986600...', 'siren': '380129866', 'method
 | Le sortant est-il fiable ? | Confiance calculée (aucune/faible/moyenne/élevée) selon le nombre de vagues de marchés ET leur cohérence temporelle, jamais juste le volume. | `scripts/detecter_sortant.py` |
 | Que se passe-t-il si l'acheteur n'a aucun historique ? | `DONNÉES INSUFFISANTES`, jamais un sortant inventé — testé dans le harnais. | `python scripts/harnais_evaluation.py` |
 | Et les filiales ? | Non modélisées volontairement (aucun dataset de structure de groupe chargé) ; documenté comme limite assumée plutôt que simulé par heuristique non fiable. | `scripts/graphe_concurrentiel.py`, docstring |
-| Qu'est-ce qui reste à faire ? | S6 (agent d'enrichissement web, seul agent restant, explicitement optionnel selon le sujet), S8 (mesures coût/latence, précision du sortant sur cas connus). S7 (verbalisation, porte de vérification, bloc de décision) est fait. | `docs/rapport_de_stage.md`, section 8 |
+| Qu'est-ce qui reste à faire ? | S6 (agent d'enrichissement web, seul agent restant, explicitement optionnel selon le sujet). S7 et S8 sont faits — les 6 métriques de la section 8 du sujet sont toutes mesurées depuis le 19/08/2026. | `docs/rapport_de_stage.md`, sections 8 et 12 |
+| Précision du sortant et coût/latence sont-ils mesurés ? | Oui : 6/6 (100%) sur le SIREN du sortant (1 cas exclu et documenté, structurellement indécidable) ; coût 0,00 EUR par briefing (aucune passerelle LLM), latence médiane ~31-34 ms sur un cas riche/ambigu, ~152 ms sur un cas qui déclenche réellement l'agent d'expansion. | `python scripts/mesurer_precision_sortant.py` et `python scripts/mesurer_cout_latence_briefing.py` |

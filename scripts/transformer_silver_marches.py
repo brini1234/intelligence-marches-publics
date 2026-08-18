@@ -234,22 +234,39 @@ def transformer_silver_marches():
         """))
         nb_dates_invalidees = resultat_dates_notif.rowcount + resultat_dates_publi.rowcount
 
+        # Détection des doublons probables inter-sources (DECP/TED). Une
+        # ligne TED peut correspondre à PLUSIEURS candidats DECP à la fois
+        # (ex. plusieurs lots du même marché aux montants/dates très
+        # proches) : un simple UPDATE...FROM sur une jointure 1-vers-N a un
+        # résultat non spécifié par PostgreSQL (dépend du plan d'exécution,
+        # non garanti stable d'une exécution à l'autre) — trouvé par revue
+        # de code indépendante le 20/08/2026, vérifié sur 10 cas réels en
+        # base. Corrigé : DISTINCT ON (ted.uid) sélectionne explicitement,
+        # pour chaque ligne TED, le candidat DECP le plus proche en date
+        # (puis decp.uid comme tie-break final pour une reproductibilité
+        # totale en cas d'égalité parfaite) — un choix déterministe et
+        # justifié, jamais un pick arbitraire.
         print("  Détection des doublons probables inter-sources (DECP/TED) ...")
         resultat_doublons = connexion.execute(text("""
             UPDATE silver_marches ted
-            SET doublon_probable_de = decp.uid
-            FROM silver_marches decp
-            WHERE ted.source = 'TED'
-              AND decp.source = 'DECP'
-              AND ted.doublon_probable_de IS NULL
-              AND ted.siret_acheteur IS NOT NULL
-              AND ted.siret_acheteur = decp.siret_acheteur
-              AND ted.code_cpv IS NOT NULL AND decp.code_cpv IS NOT NULL
-              AND LEFT(ted.code_cpv, 4) = LEFT(decp.code_cpv, 4)
-              AND ted.montant IS NOT NULL AND decp.montant IS NOT NULL
-              AND ABS(ted.montant - decp.montant) <= 0.01 * GREATEST(decp.montant, 1)
-              AND ted.date_notification IS NOT NULL AND decp.date_notification IS NOT NULL
-              AND ABS(ted.date_notification - decp.date_notification) <= 30
+            SET doublon_probable_de = candidats.decp_uid
+            FROM (
+                SELECT DISTINCT ON (t.uid) t.uid AS ted_uid, d.uid AS decp_uid
+                FROM silver_marches t
+                JOIN silver_marches d ON d.source = 'DECP'
+                WHERE t.source = 'TED'
+                  AND t.doublon_probable_de IS NULL
+                  AND t.siret_acheteur IS NOT NULL
+                  AND t.siret_acheteur = d.siret_acheteur
+                  AND t.code_cpv IS NOT NULL AND d.code_cpv IS NOT NULL
+                  AND LEFT(t.code_cpv, 4) = LEFT(d.code_cpv, 4)
+                  AND t.montant IS NOT NULL AND d.montant IS NOT NULL
+                  AND ABS(t.montant - d.montant) <= 0.01 * GREATEST(d.montant, 1)
+                  AND t.date_notification IS NOT NULL AND d.date_notification IS NOT NULL
+                  AND ABS(t.date_notification - d.date_notification) <= 30
+                ORDER BY t.uid, ABS(t.date_notification - d.date_notification), d.uid
+            ) AS candidats
+            WHERE ted.uid = candidats.ted_uid
         """))
 
         nb_total = connexion.execute(text("SELECT COUNT(*) FROM silver_marches")).scalar()

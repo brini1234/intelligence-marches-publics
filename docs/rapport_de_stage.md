@@ -1,6 +1,6 @@
 # Rapport de stage — Intelligence concurrentielle sur les marchés publics
 
-**Périmètre couvert par ce rapport :** S1 (partiel — BOAMP non exploré, cf. annexe B) à S5, S6 (2 des 3 agents du sujet — expansion pilotée par la couverture et investigation d'identité — cf. sections 3, 10 et 11), S7 (verbalisation, porte de vérification, bloc de décision), et la partie de S8 réellement construite (harnais d'évaluation, ce rapport). Seul l'agent d'enrichissement web (explicitement optionnel selon le sujet) et la passerelle LLM générale restent hors périmètre — documentés en section 8 (Pistes d'extension), pas construits.
+**Périmètre couvert par ce rapport :** S1 (partiel — BOAMP non exploré, cf. annexe B) à S5, S6 (2 des 3 agents du sujet — expansion pilotée par la couverture et investigation d'identité — cf. sections 3, 10 et 11), S7 (verbalisation, porte de vérification, bloc de décision), et S8 (harnais d'évaluation et les 6 métriques de la section 8 du sujet, toutes mesurées depuis le 19/08/2026 — cf. section 12). Seul l'agent d'enrichissement web (explicitement optionnel selon le sujet) et la passerelle LLM générale restent hors périmètre — documentés en section 8 (Pistes d'extension), pas construits.
 
 **Date de rédaction :** 10/08/2026, mis à jour le 18/08/2026 (cf. section 11). Tous les chiffres de ce rapport ont été obtenus en relançant les commandes citées à leur date respective, sur l'état du dépôt et de la base à ce moment ; chaque chiffre est accompagné de la commande qui permet de le revérifier.
 
@@ -165,8 +165,8 @@ Ce mécanisme se propage dans `fiche_de_faits.py`, qui dégrade explicitement la
 | Bloc de décision ≤ 10 lignes | ≤ 10 lignes | **PASS** — 8 lignes sur le cas testé | `python scripts/harnais_evaluation.py` |
 | Cohérence référentiel SIRENE (stock, enrichissement, orphelins) | 8 contrôles | **8/8** | `python scripts/verification_finale_sirene.py` |
 | Suite de tests | — | **42/42 passed** (38/38 au 16/08 + 4 tests ajoutés le 18/08 pour `scripts/agent_investigation_identite.py`, cf. section 11) | `pytest tests/` |
-| Précision de détection du sortant, sur cas connus | mesurée | **Non mesurée** — `tests/test_detecter_sortant.py` ne vérifie que la cohérence structurelle du résultat (2 tests), aucun jeu de cas annotés à réponse connue équivalent à `mesurer_precision_resolution.py` | — (aucun script ne la mesure) |
-| Coût et latence par briefing | mesurés | **Non mesurés** — aucun script du dépôt ne chronomètre ni ne chiffre l'exécution d'un briefing | — (aucun script ne les mesure) |
+| Précision de détection du sortant, sur cas connus | mesurée | **6/6 (100%)** sur le SIREN du sortant, 1 cas exclu car structurellement indécidable (documenté), 7/7 sur la concordance du niveau de confiance — depuis le 19/08/2026, cf. section 12 | `python scripts/mesurer_precision_sortant.py` |
+| Coût et latence par briefing | mesurés | **0,00 EUR par construction** (aucune passerelle LLM, aucun appel réseau dans le chemin de génération) ; latence médiane 31-152 ms selon le cas (~31-46 ms cas riche/ambigu/sans données, ~152 ms cas pauvre qui déclenche réellement l'agent d'expansion) — depuis le 19-20/08/2026, cf. section 12 et 13 | `python scripts/mesurer_cout_latence_briefing.py` |
 
 ## 7. Limites de données assumées
 
@@ -190,7 +190,8 @@ Reprise et mise en contexte de la section « Prochaines étapes » du README (`R
 - **Passerelle LLM** : aucune n'est configurée dans ce projet. Prérequis technique à un futur agent d'enrichissement web (les deux agents déjà construits n'en ont pas eu besoin, cf. section 3). Les embeddings (S4) utilisent volontairement un modèle local (`sentence-transformers`) pour ne pas en dépendre ; la verbalisation (S7) reste un gabarit texte strict, pas une génération par LLM.
 - **Pondération acheteur (prix/technique)** : le fait `ponderation_acheteur` existe déjà dans `fiche_de_faits.py` (couverture toujours à 0.0, valeur `"non disponible"`), en attente d'une source de données supplémentaire (ex. règlement de consultation / CCTP du marché) qu'aucun connecteur actuel ne fournit.
 - **Sources BOAMP et Pappers/Infogreffe** (sujet, section 3) : sur les 6 sources recensées par le sujet, seules SIRENE, TED et DECP sont connectées (section 2 ci-dessus). BOAMP (recoupement/détection, exploration à la main demandée dès S1) et Pappers/Infogreffe (santé financière, API payante à couverture partielle selon le sujet) restent à explorer et connecter.
-- **Précision de détection du sortant et coût/latence par briefing** (sujet, section 8) : deux des 6 métriques cibles n'ont pas de script de mesure dédié (cf. section 6 ci-dessus). `detecter_sortant.py` manque d'un jeu de cas annotés à réponse connue équivalent à celui de la résolution d'identité ; aucun script ne mesure le coût ou la latence d'un briefing.
+
+Les 6 métriques de la section 8 du sujet sont désormais toutes mesurées (précision de détection du sortant et coût/latence par briefing ajoutées le 19/08/2026, cf. section 12) — ce n'est donc plus une piste d'extension.
 
 ## 9. Vérification indépendante des résultats (10/08/2026)
 
@@ -293,6 +294,94 @@ Après la vérification ci-dessus, une revue de code indépendante (agent sépar
 
 **Conclusion de cette sous-section** : une revue indépendante, postérieure à l'auto-vérification de la section 11 elle-même, a trouvé un bug réel à impact production (pas seulement cosmétique) que la première passe n'avait pas détecté — et une tentative de correctif intermédiaire a elle-même introduit un plantage avant d'aboutir à une version stable. Les trois (bug original, régression du premier correctif, flakiness de test) sont documentés ici plutôt que silencieusement résolus, conformément au principe déjà appliqué aux sections 9 et 10 : une vérification qui ne trouve jamais rien à corriger n'est pas plus crédible qu'une vérification qui n'a pas eu lieu.
 
+## 12. Vérification du 19/08/2026 : les 2 dernières métriques de la section 8 du sujet
+
+Les 6 métriques de la section 8 avaient 4 lignes mesurées et 2 explicitement signalées comme non mesurées (précision de détection du sortant sur cas connus, coût et latence par briefing — cf. section 6). Cette section documente leur construction et leur mesure, sans agent ni modification du code de production (`detecter_sortant.py`, `fiche_de_faits.py`, `bloc_de_decision.py` sont inchangés) : uniquement deux nouveaux scripts de mesure et un jeu de test annoté, sur le même modèle méthodologique que `mesurer_precision_resolution.py`.
+
+### 12.1 Précision de détection du sortant
+
+**Méthodologie** : `tests/donnees/jeu_test_detecter_sortant.csv`, 7 cas réels construits en explorant la base (jamais de donnée inventée) — pour chaque `(siret_acheteur, code_cpv)`, la vérité terrain est établie en lisant directement l'historique brut des attributions (dénomination, date, montant) et en jugeant ce qu'un humain conclurait, exactement la méthode déjà utilisée pour SMILE/BELHARRA (section 4). Mesuré par `python scripts/mesurer_precision_sortant.py` :
+
+| Cas | Acheteur / CPV | Vérité terrain | Résultat |
+|---|---|---|---|
+| Cas fort | RÉGION GRAND EST / 72212218 | UGAP (SIREN 776056467), confiance élevée | ✅ SIREN et confiance corrects |
+| Succession propre | MBS / 72268000 | FINOPSYS (SIREN 412962219), confiance moyenne | ✅ — SCC FRANCE dominant 2024-2025 (5 attributions) puis FINOPSYS remporte le marché le plus récent (11/2025), succession non ambiguë |
+| Succession propre | COMMUNE DE MONTPELLIER / 72267000 | UGAP (776056467), confiance moyenne | ✅ — transition OPERIS (2020) → UGAP (2024-2025) |
+| Cas limite de confiance | CHU TOULOUSE / 72212180 | DEDALUS HEALTHCARE FRANCE (SIREN 414599589) | ✅ SIREN correct, confiance faible attendue **et obtenue** — titulaire unique sur 5 marchés/6 ans, mais des contrats de montants élevés qui se chevauchent dans le temps font échouer l'heuristique de cohérence temporelle. Le SIREN reste correct : ce n'est pas une erreur de détection du sortant, c'est une limite assumée du calcul de confiance |
+| Cas limite de confiance | RÉGION NORMANDIE / 72413000 | BLUEDROP.FR (SIREN 420477713) | ✅ — même limite que le cas précédent, inclus pour montrer que ce n'est pas un cas isolé |
+| Cas ambigu (exclu de la précision SIREN) | DÉPARTEMENT DES PYRÉNÉES-ORIENTALES / 72250000 | Accord-cadre multi-titulaires alternés (ATOL/WORLDLINE) | ⚪ Exclu à raison : `detecter_sortant()` retourne toujours un meilleur candidat plutôt que de refuser de répondre (design voulu, cohérent avec le reste du projet) — un premier jet du jeu de test attendait `siren_sortant is None` sur ce cas, ce qui a fait échouer le test à tort ; corrigé en excluant ce cas de la précision SIREN (structurellement indécidable) et en ne vérifiant que la confiance, qui reste bien `faible` |
+| Sans historique | acheteur/CPV inconnus | aucun sortant, confiance aucune | ✅ |
+
+**Résultat** : précision du SIREN du sortant **6/6 (100%)**, 1 cas exclu et documenté (pas caché) ; concordance du niveau de confiance **7/7**. Le sujet ne fixe pas de seuil chiffré pour cette métrique (contrairement à la résolution d'identité, >90%) — seulement « mesurée sur cas connus », ce qui est désormais le cas.
+
+**Point méthodologique assumé** : les deux cas « limite de confiance » (CHU Toulouse, Région Normandie) montrent que `detecter_sortant()` peut afficher une confiance `faible` même quand le SIREN du sortant est indiscutable (un seul titulaire sur plusieurs années). Ce n'est pas corrigé ici — la précision du SIREN (la métrique demandée par le sujet) n'en souffre pas, et resserrer l'heuristique de cohérence temporelle pour ces cas précis risquerait de la rendre trop permissive sur des cas réellement incohérents. Documenté comme limite connue, pas comme un défaut à corriger dans ce lot.
+
+### 12.2 Coût et latence par briefing
+
+**Coût — vérifié par lecture directe des imports, pas une estimation** : `grep` sur `scripts/fiche_de_faits.py`, `scripts/detecter_sortant.py`, `scripts/bloc_de_decision.py`, `scripts/agent_expansion_couverture.py`, `scripts/verbaliser.py`, `scripts/verification_mecanique.py` — aucun de ces fichiers n'importe `requests` ni `connectors.sirene`. L'API SIRENE n'intervient que dans des scripts de pipeline hors ligne (`completer_via_api_sirene.py`, `agent_investigation_identite.py` en mode `__main__`), jamais dans le chemin de génération d'un briefing. **Coût par briefing : 0,00 EUR**, garantie structurelle du code (aucune passerelle LLM configurée, `verbaliser.py` est un gabarit texte), pas une estimation.
+
+**Latence** : `python scripts/mesurer_cout_latence_briefing.py` chronomètre `construire_bloc_de_decision()` (le chemin complet réellement emprunté par un utilisateur) sur 3 cas représentatifs, 5 répétitions chacun — mesuré le 19/08/2026 sur cette machine :
+
+| Cas | min | médiane | max |
+|---|---|---|---|
+| Cas riche (Cour des Comptes) | 29 ms | 37 ms | 106 ms |
+| Cas pauvre/ambigu (Pyrénées-Orientales) | 29 ms | 30 ms | 36 ms |
+| Données insuffisantes (acheteur inconnu) | 48 ms | 54 ms | 84 ms |
+
+Latences de l'ordre de la dizaine à la centaine de millisecondes, cohérentes avec un chemin purement SQL sur une base locale (aucun appel réseau) — le cas « données insuffisantes » n'est pas le plus rapide malgré un résultat plus court, car il exécute quand même la détection de centrale d'achat et la tentative de l'agent d'expansion avant de conclure à l'absence de données (comportement voulu, cf. section 3).
+
+**Conclusion** : les 6 métriques de la section 8 du sujet sont désormais toutes mesurées, sans exception ni approximation masquée. Aucun code de production modifié dans ce lot — uniquement des scripts de mesure lecture-seule et un jeu de données annoté, `pytest tests/` inchangé (42/42) et revérifié après ajout.
+
+## 13. Revue de code indépendante du 20/08/2026 : 3 défauts trouvés dans les scripts de mesure de la section 12
+
+Comme pour les sections 9-11, une revue de code indépendante (agent séparé, sans le contexte de conception de la section 12) a relu `scripts/mesurer_precision_sortant.py`, `scripts/mesurer_cout_latence_briefing.py` et `tests/donnees/jeu_test_detecter_sortant.csv`, en ré-exécutant chaque point contre la base réelle plutôt que par lecture seule. Trois défauts réels trouvés, tous corrigés.
+
+**1. Division par zéro latente** (`mesurer_precision_sortant.py`) : si le jeu de test venait à contenir plus de cas exclus (ambigus) que de cas évaluables, `precision = nb_corrects / len(evaluees)` plante avec `ZeroDivisionError` — reproduit par la revue en isolant un jeu de test à un seul cas ambigu. Non déclenché par le jeu de test actuel (6 cas évaluables sur 7), mais un vrai bug latent. Corrigé : `precision` vaut désormais explicitement `None` avec un message clair si tous les cas sont exclus, plutôt qu'un plantage.
+
+**2. Cas de latence mal étiqueté, chemin coûteux jamais testé** (`mesurer_cout_latence_briefing.py`) : le cas « Département des Pyrénées-Orientales », étiqueté `"pauvre/ambigu"`, a `nb_marches_famille = 6 ≥ 2` (`SEUIL_COUVERTURE_SUFFISANTE`, `scripts/agent_expansion_couverture.py`) — il ne déclenche donc **jamais** l'agent d'expansion (confirmé : `elargissement_applique` absent de sa fiche de faits). Sa confiance est faible à cause d'un accord-cadre multi-titulaires alternés, pas d'un manque de données — une propriété différente que l'étiquette conflatait. Conséquence : aucun des 3 cas testés n'exerçait les axes coûteux de l'agent d'expansion (CPV parent, jointures NAF/département). La revue a identifié un cas réel qui le déclenche effectivement (SIRET `05750620600036`, CPV `72500000`, 1 seul marché en base) et mesuré l'écart : **~150 ms contre ~30 ms** pour les cas qui n'élargissent pas la recherche — un ordre de grandeur que le premier jet du script ne mesurait pas du tout. Corrigé : ce cas remplace l'ancien dans `CAS_TEST`, avec un commentaire expliquant pourquoi il diffère du cas ambigu (conservé séparément, correctement réétiqueté).
+
+**3. Biais de premier appel non amorti** (`mesurer_cout_latence_briefing.py`) : la revue a mesuré, sur 10 appels individuels au cas riche, que le tout premier appel du script (`144 ms`) est ~4x plus lent que le régime stable qui suit (`~29-34 ms`) — coût de démarrage (connexion PostgreSQL, plan de requête froid), pas une propriété du cas testé. Avec seulement 5 répétitions et sans préchauffage, ce biais gonflait artificiellement le `max` rapporté pour le premier cas de la liste (`CAS_TEST`), visible dans les chiffres initiaux de la section 12.2 (`max=106 ms` sur le cas riche, contre `36 ms` après correctif). Corrigé : un appel de préchauffage (non chronométré) précède désormais chaque série de mesures.
+
+**Chiffres corrigés, revérifiés après les 3 correctifs** (remplacent ceux de la section 12.2, qui restent visibles ci-dessus par transparence plutôt qu'édités rétroactivement) :
+
+| Cas | min | médiane | max |
+|---|---|---|---|
+| Cas riche (Cour des Comptes) | 30 ms | 31 ms | 36 ms |
+| Cas pauvre, déclenche l'agent d'expansion (SIRET 05750620600036) | 144 ms | 152 ms | 164 ms |
+| Cas ambigu, n'élargit pas la recherche (Pyrénées-Orientales) | 31 ms | 34 ms | 37 ms |
+| Données insuffisantes (acheteur inconnu) | 44 ms | 46 ms | 55 ms |
+
+**Revérification globale après les 3 correctifs** : `pytest tests/` 42/42 (inchangé), `python scripts/mesurer_precision_sortant.py` toujours 6/6 (100%) sur le SIREN du sortant (les 3 défauts trouvés ne touchaient pas la logique de correction du SIREN elle-même, seulement l'agrégation du score et le choix des cas de latence).
+
+**Conclusion** : même constat qu'aux sections 9-11 — une vérification indépendante, postérieure à l'auto-vérification de la section 12, a trouvé des défauts réels (un bug latent, un choix de cas de test qui ne mesurait pas ce qu'il prétendait mesurer, un biais de mesure). Aucun n'était visible sans ré-exécution effective contre la base réelle. Documentés et corrigés ici plutôt que silencieusement révisés.
+
+## 14. Revue de code indépendante du 20-21/08/2026 : premier bug critique du dépôt (plantage en production)
+
+Contrairement aux sections 9-13 (bugs de fausse confiance, de non-déterminisme silencieux, de biais de mesure), cette passe — la première à couvrir l'ensemble du code de production plutôt que les seuls fichiers récemment modifiés — a trouvé un **bug qui fait planter le chemin principal du produit**, `construire_bloc_de_decision()`, dans le cas le plus courant en pratique.
+
+**1. [Critique] `agent_expansion_couverture()` plante (`KeyError: 'nb_marches_famille'`)** : `detecter_sortant()` ne porte pas la clé `nb_marches_famille` dans son retour minimal quand la requête acheteur/CPV exact ne trouve aucun marché — `fiche_de_faits.py` s'en protège déjà (`.get(..., 0)`), mais `agent_expansion_couverture.py` y accédait directement par crochets à 4 endroits. Conséquence : tout acheteur connu (a un historique) interrogé sur un CPV qu'il n'a jamais utilisé — le cas normal, pas un cas limite — faisait planter le pipeline entier. Reproduit de bout en bout : `construire_bloc_de_decision("11000028800016", "45000000", "COUR DES COMPTES")` (Cour des Comptes, CPV hors de son historique réel) plantait avant correctif. `pytest` (42 tests) passait intégralement sans jamais couvrir ce chemin. Corrigé : `.get("nb_marches_famille", 0)` partout dans `agent_expansion_couverture.py` ; test de régression ajouté (`tests/test_agent_expansion_couverture.py::test_agent_ne_plante_pas_sur_acheteur_connu_avec_zero_marche_sur_le_cpv_exact`).
+
+**2. `detecter_sortant()` : sortant non déterministe sur un accord-cadre multi-titulaires notifié en une fois** : `ORDER BY m.date_notification DESC` sans tie-break secondaire — si le marché le plus récent a plusieurs titulaires à la même date, l'ordre entre eux (donc le `sortant_probable` retourné) dépend du plan d'exécution PostgreSQL, non garanti stable. Vérifié en confrontant deux plans différents sur un cas réel (`05781313100026`/CPV `72227000`) : le sortant retourné s'inversait entre FINOPSYS et CEGEDIM.CLOUD selon le plan. Au moins 10 combinaisons réelles en base présentent ce cas. Corrigé : `ORDER BY m.date_notification DESC, a.siren_titulaire ASC` — reproductible d'une exécution à l'autre ; reste un choix arbitraire *parmi* les co-titulaires réels (documenté en commentaire), pas une fausse certitude nouvelle. Test de régression ajouté (`tests/test_detecter_sortant.py::test_detecter_sortant_deterministe_sur_accord_cadre_multi_titulaires`).
+
+**3. `transformer_silver_marches.py` : déduplication DECP/TED avec correspondance multiple non gérée** : une ligne TED peut correspondre à plusieurs candidats DECP simultanément (mêmes critères acheteur/CPV/montant/date) ; l'`UPDATE ... FROM` sur une jointure 1-vers-N a un résultat non spécifié par PostgreSQL. Vérifié : 10 lignes TED réelles ont chacune 2 candidats DECP valides. Corrigé : `DISTINCT ON (ted.uid)` sélectionne explicitement le candidat DECP le plus proche en date (tie-break final sur `decp.uid`) — un choix déterministe et justifié. Revérifié après correctif sur la base réelle (rebuild complet bronze→gold) : toujours 41 doublons flagués, mêmes volumétries qu'avant.
+
+**4. [Mineur] Commentaire imprécis dans `resolution_identite.py`** : un troisième cas non mentionné (candidat unique sans établissement siège en base, 21 696 SIREN concernés sur 29,8M) tombait déjà correctement dans le fallback niveau 4b, mais le commentaire ne le décrivait pas. Corrigé (documentation seule, aucun changement de comportement).
+
+**Revérification complète après les 4 correctifs** :
+
+| Vérification | Résultat |
+|---|---|
+| `pytest tests/` | **44/44 passed** (42 + 2 tests de régression ajoutés) |
+| `python scripts/harnais_evaluation.py` | 10/10 (inchangé) |
+| `python scripts/mesurer_precision_resolution.py` | 87% / 97% (inchangé) |
+| `python scripts/mesurer_precision_sortant.py` | 6/6 (100%) (inchangé) |
+| `python scripts/verification_finale_sirene.py` | 8/8 (inchangé) |
+| Rebuild bronze→silver→gold complet | Volumétries identiques (26 830 marchés, 41 doublons, 33 sans acheteur) — le correctif de déduplication ne change pas le résultat, seulement sa garantie de stabilité |
+
+**Point additionnel non corrigé, signalé pour la soutenance** : le sujet (section 9, Environnement technique) prescrit *« Sorties structurées : Pydantic et JSON Schéma, validation systématique »*. Vérifié par `grep` sur `requirements.txt` et l'ensemble de `scripts/`/`connectors/` : **ni Pydantic ni JSON Schema ne sont utilisés nulle part dans ce dépôt.** Les sorties (fiche de faits, bloc de décision) sont des dicts/listes Python ordinaires, sans validation de schéma formelle — seulement une cohérence assurée implicitement par le code (types Python, tests). Écart réel par rapport à l'environnement technique prescrit, non documenté jusqu'ici dans ce rapport ni le README.
+
+**Conclusion** : cette passe, la première à couvrir l'intégralité du code de production plutôt que les fichiers récemment modifiés, a trouvé le bug le plus grave de toute cette série de vérifications — un plantage reproductible sur le chemin principal, dans le cas le plus courant, jamais détecté par la suite de tests existante. Corrigé, testé par régression, revérifié sur la base réelle après reconstruction complète du pipeline.
+
 ## Annexe
 
 ### A. Instructions de reproduction
@@ -326,7 +415,7 @@ Mapping S1-S8 repris du texte intégral du sujet (section 6, tableau de déroule
 | S5 | Détection du sortant, fréquences, distributions de prix, profil acheteur, métriques de couverture → fiche de faits complète sur un vrai marché | ✅ | `detecter_sortant.py` + `fiche_de_faits.py`, `pytest tests/test_detecter_sortant.py` passe, cf. section 5 |
 | S6 | Agents d'expansion et d'identité (agent web si le temps le permet) → couverture améliorée sur les cas pauvres | 🟡 | 2 des 3 agents implémentés (expansion pilotée par la couverture, investigation d'identité — cf. sections 3, 10, 11) ; seul l'agent web (explicitement optionnel selon le sujet) reste hors périmètre ; `harnais_evaluation.py` ne liste plus aucun piège `NON IMPLÉMENTÉ` |
 | S7 | Verbalisation, porte de vérification, bloc de décision, rapport détaillé → briefing lisible en 30 secondes | ✅ | `verbaliser.py`, `verification_mecanique.py`, `bloc_de_decision.py` ; `pytest tests/test_verification_mecanique.py tests/test_bloc_de_decision.py` passe (8 tests) |
-| S8 | Harnais d'évaluation, mesures, rapport, démonstration → rapport, démo et README | 🟡 | Harnais fonctionnel (10/10, `harnais_evaluation.py`), mesures partielles (`mesurer_precision_resolution.py`, `verification_finale_sirene.py` ; **précision du sortant et coût/latence par briefing non mesurés**, cf. section 6) ; ce rapport est un premier brouillon non validé ; aucune démonstration (artefact de présentation) n'existe dans le dépôt — non vérifiable depuis le code seul |
+| S8 | Harnais d'évaluation, mesures, rapport, démonstration → rapport, démo et README | 🟡 | Harnais fonctionnel (10/10, `harnais_evaluation.py`), **les 6 métriques de la section 8 du sujet sont désormais toutes mesurées** (`mesurer_precision_resolution.py`, `mesurer_precision_sortant.py`, `mesurer_cout_latence_briefing.py`, `verification_finale_sirene.py`, cf. section 6 et 12) ; ce rapport est un premier brouillon non validé ; aucune démonstration (artefact de présentation) n'existe dans le dépôt — non vérifiable depuis le code seul |
 
 ---
 
