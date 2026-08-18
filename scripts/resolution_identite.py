@@ -2,7 +2,8 @@
 Hiérarchie de résolution d'identité (sujet, section 5) : SIRET exact
 (niveau 1, déjà géré en amont — cf. transformer_silver_marches.py) ->
 normalisation (niveau 2) -> rapprochement flou (niveau 3) -> agent
-(niveau 4, hors périmètre ici, comme les deux autres agents déjà différés).
+d'investigation d'identité (niveau 4, implémenté : continuité de marché
+ci-dessous, historique SIRENE dans scripts/agent_investigation_identite.py).
 
 Ce module n'est appelé QUE pour les identifiants qui échouent au niveau 1
 (pas un SIRET à 14 chiffres exact). Découvert en explorant les données
@@ -120,6 +121,29 @@ def resoudre_par_similarite(nom_brut: str, connexion, seuil: float = 0.55) -> di
     disponible. Retourne le meilleur candidat au-dessus du seuil, avec son
     score — jamais un résultat sans score, pour que l'appelant puisse
     toujours distinguer un résultat flou d'un résultat certain.
+
+    En cas d'égalité au score maximum (ex. homonymie exacte : plusieurs
+    SIREN partagent la même dénomination, cas réels mesurés : SMILE=113,
+    BELHARRA=42) : Postgres ne garantit aucun ordre entre ex-aequo, donc
+    choisir le premier reviendrait à un pick arbitraire présenté avec la
+    même confiance qu'une correspondance unique. Retourne à la place un
+    résultat marqué "ambigu" avec la liste **complète** des candidats à
+    égalité, jamais un SIRET — c'est au niveau 4 (resoudre(), ci-dessous)
+    de tenter une désambiguïsation avec du contexte supplémentaire.
+
+    Une seule requête, l'égalité au score maximum calculée entièrement
+    côté SQL (CTE + sous-requête MAX), jamais en repassant un score par
+    Python — correctif du 18/08/2026, deuxième itération : une première
+    version limitait la détection à 10 candidats (`LIMIT 10`), masquant la
+    plupart des ex-aequo sur un nom très homonyme (vérifié : "SMILE" a 113
+    candidats à score=1.0, dont seuls 10 étaient vus) ; la version
+    intermédiaire qui a suivi (deux requêtes, la seconde comparant le score
+    Python à `similarity()` recalculé en SQL) plantait par endroits
+    (`IndexError`), la comparaison d'égalité entre un `real` PostgreSQL
+    aller-retourné en `float` Python puis rebindé n'étant pas fiable bit à
+    bit. En calculant `MAX(score)` et l'égalité dans la même requête, le
+    score ne quitte jamais PostgreSQL avant la comparaison : plus de risque
+    d'arrondi.
     """
     nom_normalise = normaliser_nom(nom_brut)
     if not nom_normalise:
@@ -131,29 +155,96 @@ def resoudre_par_similarite(nom_brut: str, connexion, seuil: float = 0.55) -> di
     # tous les candidats à faible similarité trouvés sur 29,8M lignes
     # (la différence est de l'ordre de la seconde contre plusieurs dizaines).
     connexion.execute(text("SET pg_trgm.similarity_threshold = :seuil"), {"seuil": seuil})
-    ligne = connexion.execute(text("""
-        SELECT siren, similarity(upper("denominationUniteLegale"), :nom) AS score
-        FROM sirene_stock_unite_legale
-        WHERE "denominationUniteLegale" % :nom
-        ORDER BY score DESC
-        LIMIT 1
-    """), {"nom": nom_normalise}).fetchone()
+    lignes = connexion.execute(text("""
+        WITH scores AS (
+            SELECT siren, similarity(upper("denominationUniteLegale"), :nom) AS score
+            FROM sirene_stock_unite_legale
+            WHERE "denominationUniteLegale" % :nom
+        )
+        SELECT siren, score FROM scores WHERE score = (SELECT MAX(score) FROM scores)
+    """), {"nom": nom_normalise}).fetchall()
 
-    if ligne is None or ligne[1] < seuil:
+    if not lignes:
         return None
 
-    siren, score = ligne
+    score_max = lignes[0][1]
+    candidats_ex_aequo = [ligne[0] for ligne in lignes]
+
+    if len(candidats_ex_aequo) > 1:
+        return {
+            "siret": None, "siren": None, "methode": "flou",
+            "score_confiance": float(score_max),
+            "ambigu": True, "candidats_ambigus": candidats_ex_aequo,
+        }
+
+    siren = candidats_ex_aequo[0]
     siret = resoudre_siren_vers_siret_siege(siren, connexion)
-    return {"siret": siret, "siren": siren, "methode": "flou", "score_confiance": float(score)}
+    return {"siret": siret, "siren": siren, "methode": "flou", "score_confiance": float(score_max)}
 
 
-def resoudre(identifiant_brut: str | None, nom_brut: str | None, connexion) -> list[dict]:
+def resoudre_par_continuite_acheteur(candidats_sirens: list[str], siret_acheteur: str, connexion) -> dict | None:
     """
-    Point d'entrée : applique le niveau 2 puis, en dernier recours, le
-    niveau 3. Retourne une liste de résultats exploitables (siret non NULL,
-    résultats etranger inclus pour être comptabilisés/déclarés) — jamais un
-    identifiant inventé, une liste vide signifie une résolution qui échoue
-    honnêtement.
+    Niveau 4a (investigation d'identité, sujet section 4) : parmi des
+    candidats à égalité au niveau 3 (homonymie), un acheteur qui a déjà
+    attribué un marché à l'un d'eux devient le signal de désambiguïsation —
+    la continuité d'une relation acheteur/titulaire déjà observée dans les
+    données, jamais une supposition. Recherché dans silver_attributions (même
+    couche que l'appelant, transformer_silver_marches.py, y compris les
+    résolutions déjà faites plus tôt dans la même exécution).
+
+    Score dégradé (jamais 1.0, contrairement à un SIRET exact) : c'est un
+    jugement contextuel qui peut se tromper (l'acheteur pourrait avoir
+    traité avec deux entreprises homonymes différentes), pas une certitude —
+    sujet section 8 : "changement de raison sociale -> résolution correcte
+    OU DOUTE SIGNALÉ".
+    """
+    if not candidats_sirens:
+        return None
+    lignes = connexion.execute(text("""
+        SELECT DISTINCT sa.siret_titulaire
+        FROM silver_attributions sa
+        JOIN silver_marches sm ON sm.uid = sa.uid
+        WHERE sm.siret_acheteur = :siret_acheteur
+          AND LEFT(sa.siret_titulaire, 9) = ANY(:sirens)
+    """), {"siret_acheteur": siret_acheteur, "sirens": candidats_sirens}).fetchall()
+
+    sirets_trouves = {ligne[0] for ligne in lignes}
+    if len(sirets_trouves) != 1:
+        return None  # aucune continuité, ou continuité elle-même ambiguë -> doute signalé
+
+    siret = sirets_trouves.pop()
+    return {
+        "siret": siret, "siren": siret[:9],
+        "methode": "investigation_continuite", "score_confiance": 0.75,
+    }
+
+
+def resoudre(
+    identifiant_brut: str | None,
+    nom_brut: str | None,
+    connexion,
+    siret_acheteur: str | None = None,
+    avec_historique_sirene: bool = False,
+) -> list[dict]:
+    """
+    Point d'entrée : applique le niveau 2, puis le niveau 3, puis (sujet
+    section 4, "investigation d'identité") le niveau 4 quand le niveau 3
+    est ambigu ou échoue totalement. Retourne une liste de résultats
+    exploitables (siret non NULL, résultats etranger inclus pour être
+    comptabilisés/déclarés) — jamais un identifiant inventé, une liste vide
+    signifie une résolution qui échoue honnêtement.
+
+    siret_acheteur : contexte optionnel (disponible pendant
+    transformer_silver_marches.py) qui active le niveau 4a (continuité de
+    marché, purement SQL, ci-dessus) en cas d'ambiguïté au niveau 3.
+
+    avec_historique_sirene : active le niveau 4b (recherche dans l'historique
+    des dénominations via l'API SIRENE, scripts/agent_investigation_identite.py)
+    quand le niveau 3 échoue totalement. Désactivé par défaut : cette
+    recherche est réseau-dépendante et rate-limited, elle ne doit jamais
+    tourner automatiquement dans la boucle bronze->silver (qui doit rester
+    rapide et sans dépendance réseau) — seuls scripts/mesurer_precision_resolution.py
+    et scripts/agent_investigation_identite.py l'activent explicitement.
     """
     resultats_niveau_2 = resoudre_par_normalisation(identifiant_brut)
 
@@ -171,7 +262,32 @@ def resoudre(identifiant_brut: str | None, nom_brut: str | None, connexion) -> l
         return resultats_finaux
 
     resultat_flou = resoudre_par_similarite(nom_brut, connexion) if nom_brut else None
-    if resultat_flou and resultat_flou["siret"] is not None:
+
+    if resultat_flou and not resultat_flou.get("ambigu") and resultat_flou["siret"] is not None:
+        # Niveau 3 confiant et non ambigu : c'est déjà le résultat le plus
+        # fiable disponible. Ne PAS tenter le niveau 4 par-dessus — même un
+        # résultat "surprenant" (ex. un homonyme actuel sans rapport avec
+        # une célèbre entreprise renommée) reste, sans autre contexte, le
+        # candidat le plus défendable : une correspondance réelle et
+        # actuelle, pas une supposition.
         return [resultat_flou]
 
-    return []
+    # Ici : niveau 3 ambigu (candidats à égalité) OU totalement vide.
+    # Niveau 4a (continuité, gratuit) d'abord si un contexte acheteur existe.
+    if resultat_flou and resultat_flou.get("ambigu") and siret_acheteur:
+        resultat_continuite = resoudre_par_continuite_acheteur(
+            resultat_flou["candidats_ambigus"], siret_acheteur, connexion
+        )
+        if resultat_continuite:
+            return [resultat_continuite]
+
+    # Niveau 4b (historique SIRENE, réseau, opt-in) en dernier recours.
+    if avec_historique_sirene and nom_brut:
+        # Import différé : évite un import circulaire au niveau module
+        # (agent_investigation_identite.py importe normaliser_nom d'ici).
+        from scripts.agent_investigation_identite import investiguer_via_historique_sirene
+        resultat_historique = investiguer_via_historique_sirene(nom_brut, connexion)
+        if resultat_historique and resultat_historique["siret"] is not None:
+            return [resultat_historique]
+
+    return []  # échec honnête : ambigu ou introuvable, jamais un pick arbitraire

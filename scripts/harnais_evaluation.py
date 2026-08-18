@@ -8,7 +8,12 @@ from scripts.fiche_de_faits import construire_fiche_de_faits
 from scripts.verbaliser import verbaliser
 from scripts.verification_mecanique import verifier_texte
 from scripts.marches_similaires import trouver_marches_similaires
+from scripts.agent_investigation_identite import investiguer_via_historique_sirene
 from db.connection import get_engine
+
+# Cas réel vérifié en direct (scripts/agent_investigation_identite.py) :
+# France Télécom a changé de raison sociale pour Orange en 2013, même SIREN.
+SIREN_FRANCE_TELECOM_ORANGE = "380129866"
 
 # Exemple riche connu, utilisé pour les vérifications qui ont besoin de vraies données
 ACHETEUR_TEST = "11000028800016"  # Cour des Comptes
@@ -205,15 +210,50 @@ def test_centrale_achat_signale_limite_couverture():
     )
 
 
+def test_changement_raison_sociale_resolution_ou_doute():
+    """
+    Piège du sujet (section 8) : un nom qui correspond à une dénomination
+    PASSÉE d'une entreprise (raison sociale changée depuis) doit être résolu
+    via l'agent d'investigation d'identité (niveau 4b, historique SIRENE),
+    ou à défaut signaler un doute — jamais un résultat inventé.
+
+    Cas réel vérifié : SIREN 380129866, dénomination "FRANCE TELECOM"
+    jusqu'au 2013-06-30 puis "ORANGE" depuis (changementDenominationUniteLegale
+    =true côté API SIRENE). Teste investiguer_via_historique_sirene()
+    directement plutôt que la cascade complète resoudre() : un vrai
+    homonyme ACTUEL sans rapport existe aussi (SIREN 441965027, une petite
+    entreprise réellement nommée "FRANCE TELECOM" aujourd'hui) — le niveau 3
+    le trouve en premier et s'y arrête à raison (c'est une correspondance
+    réelle et actuelle, pas une supposition). Ce test vérifie que le
+    mécanisme d'investigation lui-même distingue bien un renommage réel
+    (période passée) d'un homonyme actuel — pas que la cascade complète
+    devine l'intention de l'utilisateur entre les deux.
+    """
+    engine = get_engine()
+    with engine.connect() as connexion:
+        resultat = investiguer_via_historique_sirene("FRANCE TELECOM", connexion)
+
+    ok = (
+        resultat is not None
+        and resultat.get("siren") == SIREN_FRANCE_TELECOM_ORANGE
+        and resultat.get("methode") == "investigation_historique_denomination"
+    )
+    enregistrer(
+        "Changement de raison sociale -> résolution correcte ou doute signalé",
+        ok,
+        f"SIREN={resultat.get('siren')}, méthode={resultat.get('methode')}"
+        if resultat else "aucun résultat (API SIRENE indisponible ou résultat ambigu)",
+    )
+
+
 def cas_non_implementes():
     """
-    Pièges du sujet (section 8) qui dépendent d'un agent pas encore construit
-    (investigation d'identité). Listés explicitement pour ne jamais masquer
-    ce qui manque.
+    Pièges du sujet (section 8) qui dépendent de l'agent d'enrichissement
+    web, explicitement optionnel selon le sujet ("si le temps le permet") et
+    non construit dans ce périmètre. Listés explicitement pour ne jamais
+    masquer ce qui manque.
     """
-    return [
-        "Changement de raison sociale -> résolution correcte ou doute signalé",
-    ]
+    return []
 
 
 def executer():
@@ -230,6 +270,7 @@ def executer():
     test_concurrent_hors_france_degrade_et_declare()
     test_cpv_mal_saisi_complete_par_similarite()
     test_centrale_achat_signale_limite_couverture()
+    test_changement_raison_sociale_resolution_ou_doute()
 
     print("\n--- Cas testés et automatisés ---")
     nb_echecs = 0
@@ -241,15 +282,21 @@ def executer():
         if not r["succes"]:
             nb_echecs += 1
 
-    print("\n--- Cas prévus par le sujet, non encore implémentés (agents) ---")
-    for cas in cas_non_implementes():
-        print(f"⚠️  NON IMPLÉMENTÉ — {cas}")
+    nb_restants = len(cas_non_implementes())
+    if nb_restants:
+        print("\n--- Cas prévus par le sujet, non encore implémentés (agents) ---")
+        for cas in cas_non_implementes():
+            print(f"⚠️  NON IMPLÉMENTÉ — {cas}")
 
     print("\n" + "=" * 70)
     print(f"Résultat : {len(resultats) - nb_echecs}/{len(resultats)} vérifications automatisées réussies")
-    nb_restants = len(cas_non_implementes())
-    verbe = "reste" if nb_restants <= 1 else "restent"
-    print(f"{nb_restants} cas {verbe} à couvrir par les futurs agents")
+    if nb_restants:
+        verbe = "reste" if nb_restants <= 1 else "restent"
+        print(f"{nb_restants} cas {verbe} à couvrir par les futurs agents")
+    else:
+        print("Tous les pièges du sujet (section 8) sont couverts. Seul l'agent "
+              "d'enrichissement web (optionnel selon le sujet) reste hors périmètre, "
+              "sans piège spécifique associé.")
     print("=" * 70)
 
     return nb_echecs == 0

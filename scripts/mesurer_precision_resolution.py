@@ -39,7 +39,14 @@ def _evaluer_cas(cas: dict, connexion) -> dict:
     nom_brut = cas["nom_brut"] or None
     siren_attendu = cas["siren_attendu"] or None
 
-    resultats = resoudre(identifiant_brut, nom_brut, connexion)
+    # avec_historique_sirene=True : ce jeu de test n'a pas de contexte
+    # acheteur (niveau 4a, continuité, inapplicable ici), mais peut
+    # bénéficier du niveau 4b (historique SIRENE) sur les cas où le niveau 3
+    # échoue ou est ambigu — notamment les cas 'ambigu' (homonymie) et
+    # 'impossible*' ci-dessous, sans jamais fabriquer un résultat (vérifié :
+    # le niveau 4b exclut les homonymes courants, cf.
+    # scripts/agent_investigation_identite.py).
+    resultats = resoudre(identifiant_brut, nom_brut, connexion, avec_historique_sirene=True)
 
     if siren_attendu is None:
         # Le bon comportement est de NE RIEN trouver (ou de déclarer
@@ -103,23 +110,30 @@ def mesurer_precision():
     print(f"Cible du sujet (section 8, France) : > 90%")
 
     # Les cas 'ambigu' (homonymie réelle : plusieurs entreprises françaises
-    # partagent exactement la même dénomination) ne sont, par construction,
-    # pas résolubles par le nom seul — le sujet réserve ce cas au niveau 4
-    # (agent), explicitement hors périmètre ici. Les compter dans la même
-    # moyenne que le reste masquerait où se situe vraiment la limite.
+    # partagent exactement la même dénomination) restent, même avec le
+    # niveau 4 actif (avec_historique_sirene=True ci-dessus), partiellement
+    # non résolubles par le nom seul : le niveau 4a (continuité de marché)
+    # est inapplicable dans ce jeu de test isolé (pas de contexte acheteur),
+    # et le niveau 4b (historique SIRENE) ne peut désambiguïser que les cas
+    # où un seul candidat a une période passée exactement correspondante.
+    # Les compter dans la même moyenne que le reste masquerait où se situe
+    # vraiment la limite.
     types_hors_perimetre = [t for t in par_type if "ambigu" in t]
     if types_hors_perimetre:
         exclus = sum(len(par_type[t]) for t in types_hors_perimetre)
         corrects_sans_ambigu = nb_total_correct - sum(sum(par_type[t]) for t in types_hors_perimetre)
         total_sans_ambigu = len(evaluations) - exclus
-        print(f"Précision hors homonymie (niveau 4/agent explicitement hors périmètre) : "
+        print(f"Précision hors homonymie (niveau 4 actif, résiduellement indécidable pour une partie des cas) : "
               f"{corrects_sans_ambigu}/{total_sans_ambigu} "
               f"({corrects_sans_ambigu / total_sans_ambigu:.0%})")
 
     if precision_globale < 0.90:
         print("⚠️  Cible globale non atteinte — documenté tel quel, pas masqué. "
-              "Cause principale : homonymie de dénomination (cas 'ambigu'), "
-              "non résoluble par le nom seul, nécessiterait le niveau 4 (agent, hors périmètre).")
+              "Cause principale : homonymie de dénomination (cas 'ambigu'). Le niveau 4 "
+              "(agent d'investigation d'identité, actif dans cette mesure) en résout une "
+              "partie légitimement (continuité de marché ou historique de dénomination) ; "
+              "le reste demeure structurellement indécidable par le nom seul sans contexte "
+              "acheteur ni historique de renommage exploitable.")
     print("=" * 72)
 
     return precision_globale

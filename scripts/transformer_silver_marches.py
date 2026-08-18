@@ -85,24 +85,33 @@ def _resoudre_acheteurs_niveaux_2_3(connexion) -> int:
 def _resoudre_titulaires_niveaux_2_3(connexion) -> int:
     """Même principe que ci-dessus, côté titulaires. Un identifiant brut
     peut produire plusieurs résultats (champ multi-valeurs : co-traitance
-    concaténée dans une seule chaîne) -> plusieurs lignes silver_attributions."""
+    concaténée dans une seule chaîne) -> plusieurs lignes silver_attributions.
+
+    Jointure sur silver_marches pour récupérer le siret_acheteur déjà résolu
+    (étape précédente, ci-dessus) : ce contexte active gratuitement le
+    niveau 4a (continuité de marché, scripts/resolution_identite.py) en cas
+    d'homonymie ambiguë au niveau 3 — purement SQL, aucun appel réseau."""
     lignes = connexion.execute(text(r"""
-        SELECT DISTINCT uid, titulaire_id AS identifiant_brut, titulaire_nom AS nom_brut, 'DECP' AS source
-        FROM bronze_decp_marches
-        WHERE titulaire_id IS NOT NULL AND titulaire_id !~ '^\d{14}$'
-          AND titulaire_nom IS NOT NULL AND titulaire_nom <> ''
-          AND uid IN (SELECT uid FROM silver_marches WHERE source = 'DECP')
+        SELECT DISTINCT bdm.uid, bdm.titulaire_id AS identifiant_brut, bdm.titulaire_nom AS nom_brut,
+               'DECP' AS source, sm.siret_acheteur
+        FROM bronze_decp_marches bdm
+        JOIN silver_marches sm ON sm.uid = bdm.uid
+        WHERE bdm.titulaire_id IS NOT NULL AND bdm.titulaire_id !~ '^\d{14}$'
+          AND bdm.titulaire_nom IS NOT NULL AND bdm.titulaire_nom <> ''
+          AND sm.source = 'DECP'
         UNION
-        SELECT DISTINCT 'TED-' || publication_number, winner_identifier, winner_name, 'TED'
-        FROM bronze_ted_notices
-        WHERE winner_identifier IS NOT NULL AND winner_identifier !~ '^\d{14}$'
-          AND winner_name IS NOT NULL
-          AND ('TED-' || publication_number) IN (SELECT uid FROM silver_marches WHERE source = 'TED')
+        SELECT DISTINCT 'TED-' || btn.publication_number, btn.winner_identifier, btn.winner_name,
+               'TED', sm.siret_acheteur
+        FROM bronze_ted_notices btn
+        JOIN silver_marches sm ON sm.uid = 'TED-' || btn.publication_number
+        WHERE btn.winner_identifier IS NOT NULL AND btn.winner_identifier !~ '^\d{14}$'
+          AND btn.winner_name IS NOT NULL
+          AND sm.source = 'TED'
     """)).fetchall()
 
     nb_resolus = 0
-    for uid, identifiant_brut, nom_brut, source in lignes:
-        for r in resoudre(identifiant_brut, nom_brut, connexion):
+    for uid, identifiant_brut, nom_brut, source, siret_acheteur in lignes:
+        for r in resoudre(identifiant_brut, nom_brut, connexion, siret_acheteur=siret_acheteur):
             resultat = connexion.execute(text("""
                 INSERT INTO silver_attributions (uid, siret_titulaire, nom_titulaire, source, methode_resolution, score_confiance)
                 VALUES (:uid, :siret, :nom, :source, :methode, :score)

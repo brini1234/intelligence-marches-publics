@@ -32,7 +32,7 @@ pytest tests/ -q
 
 # 3. Harnais d'évaluation (pièges de démonstration du sujet)
 python scripts/harnais_evaluation.py
-# attendu : 9/9 automatisés réussis, 1 cas restant (changement de raison sociale)
+# attendu : 10/10 automatisés réussis, 0 cas restant (tous les pièges du sujet couverts)
 
 # 4. Contrôle SIRENE
 python scripts/verification_finale_sirene.py
@@ -121,7 +121,22 @@ python scripts/graphe_concurrentiel.py
 
 Exemple réel obtenu le 16/08 (SIREN 378615363) : 19 co-traitants retrouvés à profondeur 1-2, dont Wavestone, BearingPoint, CGI, Talan, MC2I, Orange Business Services — via `WITH RECURSIVE` sur les tables existantes, aucune table de graphe séparée.
 
-### F. Filet de sécurité si le réseau/la base a un problème pendant la démo
+### F. Agent d'investigation d'identité — changement de raison sociale (S6, niveau 4)
+
+```bash
+python -c "
+import sys; sys.path.append('.')
+from db.connection import get_engine
+from scripts.agent_investigation_identite import investiguer_via_historique_sirene
+engine = get_engine()
+with engine.connect() as c:
+    print(investiguer_via_historique_sirene('FRANCE TELECOM', c))
+"
+```
+
+Résultat vérifié : `{'siret': '38012986600...', 'siren': '380129866', 'methode': 'investigation_historique_denomination', 'score_confiance': 0.8}` — France Télécom a changé de raison sociale pour Orange en 2013 (même SIREN, vérifié en direct sur l'API SIRENE). Point à commenter : un homonyme *actuel* sans rapport existe aussi (SIREN 441965027) — le mécanisme ne le confond jamais avec un renommage car seules les périodes *passées* comptent.
+
+### G. Filet de sécurité si le réseau/la base a un problème pendant la démo
 
 - Les captures d'écran/sorties ci-dessus sont déjà dans ce document et dans les slides — en cas de souci technique en direct, les montrer telles quelles plutôt que d'improviser.
 - `pytest tests/ -q` et `python scripts/harnais_evaluation.py` sont les deux commandes de repli les plus rapides (~1-2 min) pour prouver que l'état du dépôt est sain sans dérouler d'exemple métier.
@@ -130,8 +145,8 @@ Exemple réel obtenu le 16/08 (SIREN 378615363) : 19 co-traitants retrouvés à 
 
 | Question | Réponse courte | Détail |
 |---|---|---|
-| Pourquoi 87% et pas 90% sur la résolution d'identité ? | Le seul sous-type en échec (homonymie réelle, ex. "SMILE" : 112 entreprises françaises identiques) est explicitement réservé par le sujet au niveau 4 (agent), hors périmètre de ce jalon. Hors ce cas : 97%. | `docs/rapport_de_stage.md`, section 4 |
+| Pourquoi 87% et pas 90% sur la résolution d'identité ? | Le seul sous-type en échec (homonymie réelle, ex. "SMILE" : 112 entreprises françaises identiques) est traité par le niveau 4 (agent d'investigation d'identité, implémenté) : 2/6 cas résolus légitimement via l'historique SIRENE, 4/6 restent structurellement indécidables (aucun contexte acheteur, aucun historique de renommage). Hors homonymie : 97%. | `docs/rapport_de_stage.md`, section 4 et 11 |
 | Le sortant est-il fiable ? | Confiance calculée (aucune/faible/moyenne/élevée) selon le nombre de vagues de marchés ET leur cohérence temporelle, jamais juste le volume. | `scripts/detecter_sortant.py` |
 | Que se passe-t-il si l'acheteur n'a aucun historique ? | `DONNÉES INSUFFISANTES`, jamais un sortant inventé — testé dans le harnais. | `python scripts/harnais_evaluation.py` |
 | Et les filiales ? | Non modélisées volontairement (aucun dataset de structure de groupe chargé) ; documenté comme limite assumée plutôt que simulé par heuristique non fiable. | `scripts/graphe_concurrentiel.py`, docstring |
-| Qu'est-ce qui reste à faire ? | S6 (agents), S7 (verbalisation LLM + porte de vérification — déjà en grande partie construits en avance), S8 (mesures coût/latence, précision du sortant sur cas connus). | `docs/rapport_de_stage.md`, section 8 |
+| Qu'est-ce qui reste à faire ? | S6 (agent d'enrichissement web, seul agent restant, explicitement optionnel selon le sujet), S8 (mesures coût/latence, précision du sortant sur cas connus). S7 (verbalisation, porte de vérification, bloc de décision) est fait. | `docs/rapport_de_stage.md`, section 8 |

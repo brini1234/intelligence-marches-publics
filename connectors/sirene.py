@@ -42,6 +42,38 @@ def rechercher_entreprise_par_nom(nom: str, limite: int = 5) -> list[dict]:
     return resultats
 
 
+def rechercher_par_denomination_historique(nom: str, limite: int = 20) -> list[dict]:
+    """
+    Cherche dans l'HISTORIQUE des dénominations (périodes passées d'une
+    unité légale), pas seulement la dénomination courante — opérateur
+    periode() de l'API v3.11. Sert à retrouver un SIREN dont la dénomination
+    a changé depuis (sujet, section 8 : piège "changement de raison
+    sociale") : un rapprochement flou (niveau 3) contre le stock national
+    échoue par construction dans ce cas, puisque ce stock ne porte que la
+    dénomination courante.
+
+    Vérifié en direct sur un cas réel : GET /siren?q=periode(denominationUniteLegale:"FRANCE TELECOM")
+    retourne bien le SIREN 380129866 (dénomination "FRANCE TELECOM" jusqu'au
+    2013-06-30, "ORANGE" depuis).
+
+    La recherche de l'API est en texte libre (peut aussi remonter des
+    dénominations proches mais différentes, ex. "FRANCE TELECOM CABLE") :
+    filtrer par égalité exacte après normalisation incombe à l'appelant
+    (scripts/agent_investigation_identite.py), pas à cette fonction.
+
+    Retourne la liste brute des unités légales (avec leur periodesUniteLegale).
+    """
+    url = f"{BASE_URL}/siren"
+    params = {
+        "q": f'periode(denominationUniteLegale:"{nom}")',
+        "nombre": limite,
+    }
+    reponse = requests.get(url, headers=_headers(), params=params, timeout=10)
+    reponse.raise_for_status()
+    data = reponse.json()
+    return data.get("unitesLegales", [])
+
+
 class AccesRestreintSirene(Exception):
     """
     Levée quand l'API renvoie 403 sur un SIREN précis : l'établissement est à
