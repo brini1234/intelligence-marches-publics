@@ -2,6 +2,8 @@
 
 Ce guide sert à préparer et rejouer la présentation en direct. Toutes les commandes ci-dessous ont été exécutées et vérifiées le 16/08/2026 ; les sorties citées sont réelles, pas des exemples reconstruits.
 
+**Pour la soutenance (sujet, section 7 : « démonstration de 10 minutes »)** : voir `docs/script_demonstration_10min.md` — déroulé minuté minute par minute, à suivre en direct. Ce guide-ci reste la référence technique complète (checklist, Q&A, filet de sécurité) ; l'autre est le script précis à dérouler.
+
 ## Avant la présentation (à faire la veille ou le matin même)
 
 ```bash
