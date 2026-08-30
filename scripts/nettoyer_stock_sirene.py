@@ -102,6 +102,19 @@ def nettoyer_stock_sirene():
         ))
         print("  Index créé (ou déjà présent).")
 
+        # Index sur nomUniteLegale, restreint aux entrepreneurs individuels
+        # (denominationUniteLegale IS NULL, 13,8M lignes du stock national) :
+        # nécessaire à resoudre_personne_physique() (résolution d'identité
+        # niveau 3 étendu) — un entrepreneur individuel n'a jamais de
+        # dénomination, seuls nomUniteLegale/prenom1UniteLegale existent.
+        print("=== Index pour la résolution des personnes physiques (entrepreneurs individuels) ===")
+        connexion.execute(text(
+            'CREATE INDEX IF NOT EXISTS idx_sirene_stock_unite_legale_nom '
+            'ON sirene_stock_unite_legale ("nomUniteLegale") '
+            'WHERE "denominationUniteLegale" IS NULL'
+        ))
+        print("  Index créé (ou déjà présent).")
+
     print("\n✅ Nettoyage terminé. Prochaine étape : "
           "python scripts/enrichir_entreprises_depuis_sirene.py")
 

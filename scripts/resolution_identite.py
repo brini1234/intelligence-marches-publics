@@ -157,29 +157,106 @@ def resoudre_par_similarite(nom_brut: str, connexion, seuil: float = 0.55) -> di
     connexion.execute(text("SET pg_trgm.similarity_threshold = :seuil"), {"seuil": seuil})
     lignes = connexion.execute(text("""
         WITH scores AS (
-            SELECT siren, similarity(upper("denominationUniteLegale"), :nom) AS score
+            SELECT siren, "etatAdministratifUniteLegale",
+                   similarity(upper("denominationUniteLegale"), :nom) AS score
             FROM sirene_stock_unite_legale
             WHERE "denominationUniteLegale" % :nom
         )
-        SELECT siren, score FROM scores WHERE score = (SELECT MAX(score) FROM scores)
+        SELECT siren, "etatAdministratifUniteLegale", score FROM scores
+        WHERE score = (SELECT MAX(score) FROM scores)
     """), {"nom": nom_normalise}).fetchall()
 
     if not lignes:
         return None
 
-    score_max = lignes[0][1]
-    candidats_ex_aequo = [ligne[0] for ligne in lignes]
+    score_max = lignes[0][2]
+    candidats_ex_aequo = [(ligne[0], ligne[1]) for ligne in lignes]
 
     if len(candidats_ex_aequo) > 1:
+        # Tiebreaker légitime, pas une supposition : une entreprise cessée
+        # (etatAdministratifUniteLegale != 'A') ne peut pas être le vrai
+        # titulaire d'un marché dans un jeu de données courant. Si un seul
+        # candidat ex-aequo reste actif, ce n'est plus une homonymie
+        # ambiguë au sens où l'entend ce module — c'est un filtre objectif,
+        # appliqué seulement quand il tranche à un candidat unique (jamais
+        # pour départager entre plusieurs candidats actifs restants, ce qui
+        # resterait un vrai homonyme non résoluble). Score dégradé (jamais
+        # 1.0) : le statut actif réduit l'ambiguïté sans l'éliminer.
+        candidats_actifs = [siren for siren, etat in candidats_ex_aequo if etat == "A"]
+        if len(candidats_actifs) == 1:
+            siren = candidats_actifs[0]
+            siret = resoudre_siren_vers_siret_siege(siren, connexion)
+            if siret is not None:
+                return {
+                    "siret": siret, "siren": siren, "methode": "flou_desambigue_actif",
+                    "score_confiance": 0.65,
+                }
+
         return {
             "siret": None, "siren": None, "methode": "flou",
             "score_confiance": float(score_max),
-            "ambigu": True, "candidats_ambigus": candidats_ex_aequo,
+            "ambigu": True, "candidats_ambigus": [siren for siren, _ in candidats_ex_aequo],
         }
 
-    siren = candidats_ex_aequo[0]
+    siren = candidats_ex_aequo[0][0]
     siret = resoudre_siren_vers_siret_siege(siren, connexion)
     return {"siret": siret, "siren": siren, "methode": "flou", "score_confiance": float(score_max)}
+
+
+def resoudre_personne_physique(nom_brut: str, connexion) -> dict | None:
+    """
+    Niveau 3 étendu : un entrepreneur individuel n'a jamais de
+    denominationUniteLegale en SIRENE (13,8M lignes du stock national dans
+    ce cas, vérifié) — seuls nomUniteLegale (nom de famille) et
+    prenom1UniteLegale (et parfois prenom2-4/prenomUsuel) sont renseignés.
+    resoudre_par_similarite() ne les trouve donc jamais, quel que soit le
+    nom cherché. Découvert sur un cas réel du jeu de test (SIREN 478012313,
+    "LILIAN ABRAHAM" : nomUniteLegale="ABRAHAM", prenom1UniteLegale="LILIAN").
+
+    N'est appelé qu'en dernier recours, quand resoudre_par_similarite()
+    échoue totalement (aucun candidat sur la dénomination) : le nom brut
+    est découpé en mots, chaque mot est essayé comme hypothèse de nom de
+    famille (égalité exacte après normalisation, pas de rapprochement flou
+    ici — un nom de famille mal orthographié serait un faux positif trop
+    risqué), et les mots restants doivent correspondre exactement à l'un
+    des champs prénom du même SIREN. Jamais un candidat sans correspondance
+    de prénom : "ABRAHAM" seul remonte 1018 personnes dans le stock
+    national, une égalité de nom de famille seule ne prouve rien.
+
+    Retourne None si aucune hypothèse ne produit un candidat unique
+    (aucun nom à ≥2 mots, aucune correspondance, ou plusieurs personnes
+    distinctes correspondent) — même principe qu'ailleurs dans ce module :
+    jamais un pick arbitraire.
+    """
+    nom_normalise = normaliser_nom(nom_brut)
+    mots = nom_normalise.split()
+    if len(mots) < 2:
+        return None
+
+    candidats_trouves: set[str] = set()
+    for i, mot_nom_famille in enumerate(mots):
+        prenoms_restants = mots[:i] + mots[i + 1:]
+        lignes = connexion.execute(text("""
+            SELECT siren, "prenom1UniteLegale", "prenom2UniteLegale",
+                   "prenom3UniteLegale", "prenom4UniteLegale", "prenomUsuelUniteLegale"
+            FROM sirene_stock_unite_legale
+            WHERE "denominationUniteLegale" IS NULL AND "nomUniteLegale" = :nom
+        """), {"nom": mot_nom_famille}).fetchall()
+
+        for siren, *champs_prenom in lignes:
+            prenoms_du_siren = {normaliser_nom(p) for p in champs_prenom if p}
+            if all(p in prenoms_du_siren for p in prenoms_restants):
+                candidats_trouves.add(siren)
+
+    if len(candidats_trouves) != 1:
+        return None  # aucune correspondance, ou plusieurs personnes distinctes -> doute signalé
+
+    siren = candidats_trouves.pop()
+    siret = resoudre_siren_vers_siret_siege(siren, connexion)
+    return {
+        "siret": siret, "siren": siren,
+        "methode": "flou_personne_physique", "score_confiance": 0.9,
+    }
 
 
 def resoudre_par_continuite_acheteur(candidats_sirens: list[str], siret_acheteur: str, connexion) -> dict | None:
@@ -225,6 +302,7 @@ def resoudre(
     connexion,
     siret_acheteur: str | None = None,
     avec_historique_sirene: bool = False,
+    avec_enrichissement_web: bool = False,
 ) -> list[dict]:
     """
     Point d'entrée : applique le niveau 2, puis le niveau 3, puis (sujet
@@ -245,6 +323,13 @@ def resoudre(
     tourner automatiquement dans la boucle bronze->silver (qui doit rester
     rapide et sans dépendance réseau) — seuls scripts/mesurer_precision_resolution.py
     et scripts/agent_investigation_identite.py l'activent explicitement.
+
+    avec_enrichissement_web : active le niveau 5 (agent d'enrichissement
+    web, scripts/agent_enrichissement_web.py, sujet section 4 — le
+    troisième agent, explicitement optionnel) en tout dernier recours,
+    après échec des niveaux 1-4. Même principe de désactivation par défaut
+    que avec_historique_sirene : réseau-dépendant, fiabilité "Faible"
+    (sujet section 3), jamais dans la boucle bronze->silver.
     """
     resultats_niveau_2 = resoudre_par_normalisation(identifiant_brut)
 
@@ -286,6 +371,18 @@ def resoudre(
         if resultat_continuite:
             return [resultat_continuite]
 
+    # Personne physique (niveau 3 étendu) : seulement si le niveau 3 sur
+    # dénomination a échoué totalement (pas de candidat du tout) — un
+    # entrepreneur individuel n'a jamais de denominationUniteLegale, donc
+    # resoudre_par_similarite() ne peut par construction ni le trouver ni
+    # produire une ambiguïté sur ce nom. Ne pas tenter si resultat_flou a
+    # déjà trouvé un candidat (même ambigu) sur une dénomination réelle :
+    # ce serait alors un homonyme moral, pas une personne physique.
+    if nom_brut and not resultat_flou:
+        resultat_personne_physique = resoudre_personne_physique(nom_brut, connexion)
+        if resultat_personne_physique and resultat_personne_physique["siret"] is not None:
+            return [resultat_personne_physique]
+
     # Niveau 4b (historique SIRENE, réseau, opt-in) en dernier recours.
     if avec_historique_sirene and nom_brut:
         # Import différé : évite un import circulaire au niveau module
@@ -294,5 +391,15 @@ def resoudre(
         resultat_historique = investiguer_via_historique_sirene(nom_brut, connexion)
         if resultat_historique and resultat_historique["siret"] is not None:
             return [resultat_historique]
+
+    # Niveau 5 (agent d'enrichissement web, sujet section 4, opt-in) :
+    # tout dernier recours, seulement après échec des niveaux 1-4. Réseau-
+    # dépendant, fiabilité "Faible" (sujet section 3) — désactivé par
+    # défaut pour la même raison que avec_historique_sirene ci-dessus.
+    if avec_enrichissement_web and nom_brut:
+        from scripts.agent_enrichissement_web import enrichir_identite_via_web
+        resultat_web = enrichir_identite_via_web(nom_brut, connexion)
+        if resultat_web and resultat_web["siret"] is not None:
+            return [resultat_web]
 
     return []  # échec honnête : ambigu ou introuvable, jamais un pick arbitraire

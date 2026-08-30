@@ -1,9 +1,17 @@
 import sys
 sys.path.append(".")
+from db.connection import get_engine
 from scripts.resolution_identite import (
     normaliser_nom,
     resoudre_par_normalisation,
+    resoudre_personne_physique,
 )
+
+# Entrepreneur individuel réel (SIREN 478012313) : nomUniteLegale="ABRAHAM",
+# prenom1UniteLegale="LILIAN", denominationUniteLegale NULL (vérifié en base) —
+# cas du jeu de test annoté (tests/donnees/jeu_test_resolution_identite.csv,
+# type_cas=impossible_par_nom).
+SIREN_ABRAHAM_LILIAN = "478012313"
 
 
 def test_espaces_internes_recomposent_un_siret():
@@ -55,3 +63,34 @@ def test_normaliser_nom_retire_formes_juridiques_et_accents():
 def test_normaliser_nom_vide_retourne_chaine_vide():
     assert normaliser_nom("") == ""
     assert normaliser_nom(None) == ""
+
+
+def test_personne_physique_resout_prenom_nom_dans_le_bon_ordre():
+    # "LILIAN ABRAHAM" (prénom puis nom) doit résoudre vers le même SIREN
+    # que "ABRAHAM LILIAN" (nom puis prénom) : l'ordre des mots dans le nom
+    # brut n'est pas garanti par les sources (DECP/TED), donc chaque mot est
+    # essayé comme hypothèse de nom de famille, pas seulement le dernier.
+    engine = get_engine()
+    with engine.connect() as connexion:
+        resultat_ordre_1 = resoudre_personne_physique("LILIAN ABRAHAM", connexion)
+        resultat_ordre_2 = resoudre_personne_physique("ABRAHAM LILIAN", connexion)
+    for resultat in (resultat_ordre_1, resultat_ordre_2):
+        assert resultat is not None
+        assert resultat["siren"] == SIREN_ABRAHAM_LILIAN
+        assert resultat["methode"] == "flou_personne_physique"
+        assert resultat["score_confiance"] < 1.0  # jamais une certitude pleine
+
+
+def test_personne_physique_nom_de_famille_seul_ne_suffit_pas():
+    # "ABRAHAM" seul (sans prénom) : 1018 personnes distinctes partagent ce
+    # nom de famille dans le stock national (vérifié) — une égalité de nom
+    # de famille seule ne doit jamais produire un résultat.
+    engine = get_engine()
+    with engine.connect() as connexion:
+        assert resoudre_personne_physique("ABRAHAM", connexion) is None
+
+
+def test_personne_physique_nom_invente_ne_produit_rien():
+    engine = get_engine()
+    with engine.connect() as connexion:
+        assert resoudre_personne_physique("ZZZZINVENTE QQQQFICTIF", connexion) is None
