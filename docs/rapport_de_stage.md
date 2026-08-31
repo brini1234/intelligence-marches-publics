@@ -1,8 +1,8 @@
 # Rapport de stage — Intelligence concurrentielle sur les marchés publics
 
-**Périmètre couvert par ce rapport :** S1 (partiel — BOAMP non exploré, cf. annexe B) à S5, S6 (2 des 3 agents du sujet — expansion pilotée par la couverture et investigation d'identité — cf. sections 3, 10 et 11), S7 (verbalisation, porte de vérification, bloc de décision), et S8 (harnais d'évaluation et les 6 métriques de la section 8 du sujet, toutes mesurées depuis le 19/08/2026 — cf. section 12). Seul l'agent d'enrichissement web (explicitement optionnel selon le sujet) et la passerelle LLM générale restent hors périmètre — documentés en section 8 (Pistes d'extension), pas construits.
+**Périmètre couvert par ce rapport :** S1 (partiel — BOAMP non exploré, cf. annexe B) à S5, **S6 (les 3 agents du sujet — cf. sections 3, 10, 11 et 15)**, S7 (verbalisation, porte de vérification, bloc de décision), et S8 (harnais d'évaluation et les 6 métriques de la section 8 du sujet, toutes mesurées depuis le 19/08/2026 — cf. section 12). La passerelle LLM générale et 2 des 6 sources du sujet (BOAMP, Pappers/Infogreffe) restent hors périmètre — documentés en section 8 (Pistes d'extension), pas construits.
 
-**Date de rédaction :** 10/08/2026, mis à jour le 18/08/2026 (cf. section 11). Tous les chiffres de ce rapport ont été obtenus en relançant les commandes citées à leur date respective, sur l'état du dépôt et de la base à ce moment ; chaque chiffre est accompagné de la commande qui permet de le revérifier.
+**Date de rédaction :** 10/08/2026, mis à jour le 18/08/2026 (cf. section 11), le 20/08/2026 (section 13-14), et le 31/08/2026 (agent d'enrichissement web, résolution des entrepreneurs individuels, vérification totale du dépôt — cf. section 15). Tous les chiffres de ce rapport ont été obtenus en relançant les commandes citées à leur date respective, sur l'état du dépôt et de la base à ce moment ; chaque chiffre est accompagné de la commande qui permet de le revérifier.
 
 ---
 
@@ -151,9 +151,9 @@ Ce mécanisme se propage dans `fiche_de_faits.py`, qui dégrade explicitement la
 
 **Le sujet a été fourni en texte intégral au cours de cette rédaction** (section 8 : tableau de 6 métriques — taux d'affirmations sourcées, taux d'hallucination, précision résolution d'identité, précision détection du sortant, couverture, coût/latence par briefing — et 5 pièges de démonstration). Le tableau ci-dessous reprend l'intégralité des 5 pièges et des 6 métriques : mesurées par un script quand c'est possible, garanties par construction du code sinon, ou signalées explicitement comme non mesurées — jamais omises. Chaque ligne mesurée est vérifiée par une commande reproductible, relancée le 10/08/2026.
 
-| Exigence (section 8) | Cible | Mesure au 10/08/2026 | Commande |
+| Exigence (section 8) | Cible | Mesure au 31/08/2026 (historique : 87%/97% au 10/08/2026, cf. section 15) | Commande |
 |---|---|---|---|
-| Précision résolution d'identité (France) | > 90% | **87%** global / **97%** hors homonymie | `python scripts/mesurer_precision_resolution.py` |
+| Précision résolution d'identité (France) | > 90% | **92%** global / **100%** hors homonymie — **cible atteinte** (cf. section 15) | `python scripts/mesurer_precision_resolution.py` |
 | Piège « Acheteur sans historique » → données insuffisantes | déclenchement réel | **PASS** | `python scripts/harnais_evaluation.py` |
 | Piège « Concurrent hors France » → dégradé + déclaré | déclenchement réel, pas simulé | **PASS** — déclaré=True, dégradé=True (couverture=0.33), compté=True | `python scripts/harnais_evaluation.py` |
 | Piège « CPV mal saisi » → complété par similarité | déclenchement réel | **PASS** — cas découvert dynamiquement (CPV 72267100), 5 marchés à CPV différent retournés avec score, meilleur cas ≥ 0.6 trouvé | `python scripts/harnais_evaluation.py` |
@@ -164,7 +164,7 @@ Ce mécanisme se propage dans `fiche_de_faits.py`, qui dégrade explicitement la
 | Couverture jamais présentée comme 100% trompeur | — | **PASS** | `python scripts/harnais_evaluation.py` |
 | Bloc de décision ≤ 10 lignes | ≤ 10 lignes | **PASS** — 8 lignes sur le cas testé | `python scripts/harnais_evaluation.py` |
 | Cohérence référentiel SIRENE (stock, enrichissement, orphelins) | 8 contrôles | **8/8** | `python scripts/verification_finale_sirene.py` |
-| Suite de tests | — | **42/42 passed** (38/38 au 16/08 + 4 tests ajoutés le 18/08 pour `scripts/agent_investigation_identite.py`, cf. section 11) | `pytest tests/` |
+| Suite de tests | — | **51 passed, 2 skipped** (cf. section 15 — les 2 `skipped` dépendent d'une vraie réponse de DuckDuckGo, aléa réseau documenté, jamais un échec de logique) | `pytest tests/` |
 | Précision de détection du sortant, sur cas connus | mesurée | **6/6 (100%)** sur le SIREN du sortant, 1 cas exclu car structurellement indécidable (documenté), 7/7 sur la concordance du niveau de confiance — depuis le 19/08/2026, cf. section 12 | `python scripts/mesurer_precision_sortant.py` |
 | Coût et latence par briefing | mesurés | **0,00 EUR par construction** (aucune passerelle LLM, aucun appel réseau dans le chemin de génération) ; latence médiane 31-152 ms selon le cas (~31-46 ms cas riche/ambigu/sans données, ~152 ms cas pauvre qui déclenche réellement l'agent d'expansion) — depuis le 19-20/08/2026, cf. section 12 et 13 | `python scripts/mesurer_cout_latence_briefing.py` |
 
@@ -186,7 +186,7 @@ Synthèse de la section « Limites de données connues » du `README.md`, revér
 
 Reprise et mise en contexte de la section « Prochaines étapes » du README (`README.md`, section du même nom) :
 
-- **S6 — Agents** (investigation d'identité, expansion pilotée par la couverture, enrichissement web optionnel) : les trois agents justifiés en section 3. L'agent d'expansion pilotée par la couverture est implémenté depuis le 16/08/2026 (cf. section 10), l'agent d'investigation d'identité depuis le 18/08/2026 (cf. section 11). Seul l'enrichissement web (explicitement optionnel selon le sujet) reste hors périmètre. `scripts/harnais_evaluation.py` ne liste plus aucun piège `NON IMPLÉMENTÉ`.
+- **S6 — Agents : les 3 sont désormais implémentés**, plus tôt que prévu par ce plan (investigation d'identité et expansion pilotée par la couverture depuis les sections 10-11 ; enrichissement web ajouté le 31/08/2026, cf. section 15) — ce n'est donc plus une piste d'extension. `scripts/harnais_evaluation.py` ne liste plus aucun piège `NON IMPLÉMENTÉ`.
 - **Passerelle LLM** : aucune n'est configurée dans ce projet. Prérequis technique à un futur agent d'enrichissement web (les deux agents déjà construits n'en ont pas eu besoin, cf. section 3). Les embeddings (S4) utilisent volontairement un modèle local (`sentence-transformers`) pour ne pas en dépendre ; la verbalisation (S7) reste un gabarit texte strict, pas une génération par LLM.
 - **Pondération acheteur (prix/technique)** : le fait `ponderation_acheteur` existe déjà dans `fiche_de_faits.py` (couverture toujours à 0.0, valeur `"non disponible"`), en attente d'une source de données supplémentaire (ex. règlement de consultation / CCTP du marché) qu'aucun connecteur actuel ne fournit.
 - **Sources BOAMP et Pappers/Infogreffe** (sujet, section 3) : sur les 6 sources recensées par le sujet, seules SIRENE, TED et DECP sont connectées (section 2 ci-dessus). BOAMP (recoupement/détection, exploration à la main demandée dès S1) et Pappers/Infogreffe (santé financière, API payante à couverture partielle selon le sujet) restent à explorer et connecter.
@@ -382,6 +382,48 @@ Contrairement aux sections 9-13 (bugs de fausse confiance, de non-déterminisme 
 
 **Conclusion** : cette passe, la première à couvrir l'intégralité du code de production plutôt que les fichiers récemment modifiés, a trouvé le bug le plus grave de toute cette série de vérifications — un plantage reproductible sur le chemin principal, dans le cas le plus courant, jamais détecté par la suite de tests existante. Corrigé, testé par régression, revérifié sur la base réelle après reconstruction complète du pipeline.
 
+## 15. Vérification totale du 31/08/2026 : troisième agent, résolution des entrepreneurs individuels, et audit du dépôt entier
+
+Cette section documente une vérification totale du dépôt, demandée explicitement : ré-exécution effective de toutes les commandes de mesure citées dans ce rapport, pas une relecture du texte, dans le même esprit que les sections 9 à 14.
+
+**État trouvé en entrant dans cette passe** : du code non documenté dans ce rapport ni dans le README était déjà présent dans le dernier commit du dépôt (`e0a44f2`, avant cette session) — l'agent d'enrichissement web (`scripts/agent_enrichissement_web.py`, `connectors/web_ouvert.py`, niveau 5 de la hiérarchie de résolution d'identité) et la résolution des entrepreneurs individuels (`resoudre_personne_physique`, niveau 3 étendu, `scripts/resolution_identite.py`). Le README et ce rapport décrivaient encore l'état d'avant ce commit (« seul l'agent web reste hors périmètre », précision 87%/97%) — un écart de documentation, pas de code, corrigé dans cette section et dans le README.
+
+**Environnement** : PostgreSQL 16 actif, `venv` opérationnel, `.env` renseigné — aucun incident de démarrage cette fois (contrairement aux sections 9 et 10).
+
+**Ré-exécution complète** :
+
+| Commande | Résultat |
+|---|---|
+| `pytest tests/` | **51 passed, 2 skipped** (2 échecs transitoires trouvés et traités, cf. ci-dessous) |
+| `python scripts/harnais_evaluation.py` | **10/10** (inchangé) |
+| `python scripts/verification_finale_sirene.py` | **8/8** (inchangé) |
+| `python scripts/mesurer_precision_resolution.py` | **92%** global (36/39), **100%** hors homonymie (33/33) — **en hausse** par rapport à 87%/97% (cf. analyse ci-dessous) |
+| `python scripts/mesurer_precision_sortant.py` | **6/6 (100%)** sur le SIREN du sortant (inchangé) |
+| `python scripts/mesurer_cout_latence_briefing.py` | 0,00 EUR par briefing, latences du même ordre de grandeur qu'en section 13 (inchangé) |
+
+**Analyse de la hausse de précision de résolution (87% → 92%)**, vérifiée cas par cas contre le jeu de test (`tests/donnees/jeu_test_resolution_identite.csv`, toujours 39 cas) :
+- Le cas `impossible_par_nom` (0/1 depuis la section 4 — un entrepreneur individuel, `denominationUniteLegale` vide en SIRENE par nature) est désormais résolu par `resoudre_personne_physique()` : découpe le nom en mots, essaie chaque mot comme nom de famille (`nomUniteLegale`), exige une correspondance exacte des mots restants sur les champs prénom du même SIREN. Nécessite l'index `db/migration_004_index_personne_physique.sql` (sans lui, la requête sur 29,8M lignes ne termine pas en un temps raisonnable) — vérifié présent en base (`idx_sirene_stock_unite_legale_nom`).
+- `niveau3_flou_ambigu` passe de 2/6 à 3/6 : un cas d'homonymie supplémentaire est désormais tranché par un nouveau tie-break dans `resoudre_par_similarite()` — parmi des candidats ex-aequo au score maximum, si un seul a un statut administratif actif (`etatAdministratifUniteLegale = 'A'`) et les autres sont cessés, le candidat actif est retenu (score dégradé à 0.65, jamais 1.0 — une entreprise cessée ne peut être le vrai titulaire d'un marché courant, mais ce n'est pas une certitude au niveau d'une correspondance unique). Appliqué seulement quand il tranche à un candidat unique, jamais pour départager entre plusieurs candidats actifs restants (qui resteraient un vrai homonyme non résoluble).
+- Net : 36/39 (92%), au-dessus de la cible du sujet (section 8, >90%) pour la première fois sur le chiffre global, pas seulement hors homonymie.
+
+**Deux échecs transitoires trouvés et traités, distincts d'un bug de logique** :
+1. `tests/test_agent_enrichissement_web.py` (2 tests) : dépendent d'une vraie réponse de `duckduckgo.com/html` (le connecteur web ouvert, `connectors/web_ouvert.py`, interroge cette interface HTML publique faute d'API de recherche gratuite et stable pour cet usage). Vérifié en direct par requête HTTP isolée (avec et sans user-agent de navigateur réel, sur `html.duckduckgo.com` et `lite.duckduckgo.com`) : DuckDuckGo répond par un défi anti-bot (HTTP 202, page « Select all squares containing a duck », CAPTCHA visuel) plutôt que des résultats — un aléa réseau externe indépendant de ce dépôt, pas une régression de code. La dégradation gracieuse fonctionne exactement comme conçue : `rechercher_web()` retourne `[]` (jamais d'exception), `enrichir_identite_via_web()` retourne `None`. Les deux tests concernés ont été corrigés pour se déclarer `pytest.skip(...)` plutôt que `failed` quand la recherche web ne renvoie explicitement aucun résultat exploitable — distinguer un vrai échec de logique d'un aléa réseau, même principe déjà appliqué à la flakiness réseau documentée en section 11.1.
+2. `tests/test_sirene.py::test_recherche_retourne_des_resultats` : un timeout (`ReadTimeout`, 10s) est apparu une fois pendant l'exécution de la suite complète, contre l'API SIRENE réelle — repassé instantanément en isolation (`pytest tests/test_sirene.py`, 0.45s). Un aléa réseau ponctuel sous charge (probablement lié aux nombreuses requêtes DuckDuckGo simultanées de la suite), pas une régression : aucun changement de code, documenté ici par transparence plutôt que silencieusement ignoré.
+
+**Bug critique trouvé dans `.gitignore`** : le même commit du 31/08 (avant cette session) avait remplacé l'entrée `data/` (tout le dossier ignoré) par `data/*.dump` (seuls les fichiers `.dump` *dans* `data/` ignorés) — une régression réelle, contraire à l'intention énoncée dans le message de commit (« Ajoute aussi `*.dump` au `.gitignore` »). Conséquence vérifiée par `git check-ignore` : les ~17 Go de fichiers stock SIRENE (`data/sirene/`), les ~233 Mo de Parquet DECP (`data/decp/`), et une sauvegarde de 1,7 Go à la racine du dépôt (`sauvegarde_projet.dump`, non couverte non plus car hors de `data/`) n'étaient **plus ignorés du tout** — exposés à un `git add -A` accidentel. Corrigé : `data/` (dossier entier, comme avant le 31/08) et `*.dump` (bare, couvre aussi la racine) ; revérifié par `git check-ignore -v` sur les trois chemins concernés, tous désormais correctement ignorés.
+
+**Message de sortie de `harnais_evaluation.py` corrigé** : le message final affichait encore « Seul l'agent d'enrichissement web ... reste hors périmètre » alors que ce commit l'avait déjà rendu faux — corrigé pour refléter les 3 agents implémentés, avec la même réserve sur la fragilité réseau du niveau 5 que documentée ci-dessus.
+
+**Documentation mise à jour en conséquence** : README (section « Résolution d'identité » — tableau, niveau 3 étendu, niveau 5, étape d'installation `migration_004` ; section « Prochaines étapes » — S6 complet), `docs/guide_demonstration.md` et `docs/script_demonstration_10min.md` (précision 87%→92%, nombre de tests, mention des 3 agents), ce rapport (scope en tête de document, section 6, section 8, annexe B).
+
+**Écarts réels restants, confirmés inchangés par cette passe** (aucun n'est un oubli, tous documentés depuis les sections précédentes) :
+- **Pydantic/JSON Schema non utilisés** (sujet, section 9) — reconfirmé par `grep` sur `requirements.txt` et l'ensemble de `scripts/`/`connectors/` le 31/08/2026 : toujours aucune occurrence.
+- **BOAMP et Pappers/Infogreffe non connectés** (sujet, section 3) — reconfirmé par `grep` sur `connectors/` : toujours seulement `decp.py`, `sirene.py`, `ted.py`, `web_ouvert.py`.
+- **Pondération acheteur** — toujours `"non disponible"` par construction, aucune source connectée ne la publie.
+- Ces trois écarts demandent soit une nouvelle source de données (BOAMP, Pappers, RC/CCTP), soit une refonte structurelle des sorties (Pydantic) — un travail de nature différente d'une vérification/correction, hors périmètre de cette passe.
+
+**Conclusion** : comme aux sections 9-14, cette vérification a porté sur une ré-exécution effective, pas déclarative. Elle a trouvé et corrigé deux échecs transitoires de tests (aléas réseau externes, jamais des bugs de logique), un message de sortie devenu faux après un commit non suivi de mise à jour documentaire, et une précision de résolution d'identité en réalité meilleure que ce que la documentation affichait — 92% global, la cible du sujet (>90%) étant désormais atteinte sans exclure l'homonymie. Rien trouvé qui remette en cause un résultat déjà publié dans les sections 1 à 14.
+
 ## Annexe
 
 ### A. Instructions de reproduction
@@ -413,7 +455,7 @@ Mapping S1-S8 repris du texte intégral du sujet (section 6, tableau de déroule
 | S3 | SIRENE et résolution d'identité, jeu de test annoté → précision de résolution mesurée | ✅ | 87% global / 97% hors homonymie, cf. section 4 |
 | S4 | Embeddings d'objets de marché, couche graphe, requêtes récursives → marchés similaires et traversées fonctionnels | ✅ | `pytest tests/test_marches_similaires.py tests/test_graphe_concurrentiel.py` passe ; couverture embeddings 100% (cf. README) |
 | S5 | Détection du sortant, fréquences, distributions de prix, profil acheteur, métriques de couverture → fiche de faits complète sur un vrai marché | ✅ | `detecter_sortant.py` + `fiche_de_faits.py`, `pytest tests/test_detecter_sortant.py` passe, cf. section 5 |
-| S6 | Agents d'expansion et d'identité (agent web si le temps le permet) → couverture améliorée sur les cas pauvres | 🟡 | 2 des 3 agents implémentés (expansion pilotée par la couverture, investigation d'identité — cf. sections 3, 10, 11) ; seul l'agent web (explicitement optionnel selon le sujet) reste hors périmètre ; `harnais_evaluation.py` ne liste plus aucun piège `NON IMPLÉMENTÉ` |
+| S6 | Agents d'expansion et d'identité (agent web si le temps le permet) → couverture améliorée sur les cas pauvres | ✅ | Les 3 agents implémentés — expansion pilotée par la couverture, investigation d'identité (cf. sections 3, 10, 11), enrichissement web (agent optionnel selon le sujet, ajouté le 31/08/2026, cf. section 15) ; `harnais_evaluation.py` ne liste plus aucun piège `NON IMPLÉMENTÉ` |
 | S7 | Verbalisation, porte de vérification, bloc de décision, rapport détaillé → briefing lisible en 30 secondes | ✅ | `verbaliser.py`, `verification_mecanique.py`, `bloc_de_decision.py` ; `pytest tests/test_verification_mecanique.py tests/test_bloc_de_decision.py` passe (8 tests) |
 | S8 | Harnais d'évaluation, mesures, rapport, démonstration → rapport, démo et README | 🟡 | Harnais fonctionnel (10/10, `harnais_evaluation.py`), **les 6 métriques de la section 8 du sujet sont désormais toutes mesurées** (`mesurer_precision_resolution.py`, `mesurer_precision_sortant.py`, `mesurer_cout_latence_briefing.py`, `verification_finale_sirene.py`, cf. section 6 et 12) ; ce rapport est un premier brouillon non validé ; aucune démonstration (artefact de présentation) n'existe dans le dépôt — non vérifiable depuis le code seul |
 

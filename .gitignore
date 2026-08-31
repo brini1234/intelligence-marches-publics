@@ -5,4 +5,5 @@ venv/
 .venv/
 *.log
 .pytest_cache/
-data/*.dump
+data/
+*.dump

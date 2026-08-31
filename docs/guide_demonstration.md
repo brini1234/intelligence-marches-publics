@@ -1,6 +1,6 @@
 # Guide de démonstration — validation jalon mi-parcours (fin S5)
 
-Ce guide sert à préparer et rejouer la présentation en direct. Toutes les commandes ci-dessous ont été exécutées et vérifiées le 16/08/2026 ; les sorties citées sont réelles, pas des exemples reconstruits.
+Ce guide sert à préparer et rejouer la présentation en direct. Toutes les commandes ci-dessous ont été exécutées et vérifiées le 31/08/2026 ; les sorties citées sont réelles, pas des exemples reconstruits.
 
 **Pour la soutenance (sujet, section 7 : « démonstration de 10 minutes »)** : voir `docs/script_demonstration_10min.md` — déroulé minuté minute par minute, à suivre en direct. Ce guide-ci reste la référence technique complète (checklist, Q&A, filet de sécurité) ; l'autre est le script précis à dérouler.
 
@@ -28,9 +28,10 @@ pg_isready   # doit répondre "accepting connections"
 Cette opération ne touche à aucune donnée (juste un fichier de verrou système).
 
 ```bash
-# 2. Suite de tests complète (~1-2 min)
+# 2. Suite de tests complète (~1 min)
 pytest tests/ -q
-# attendu : 44 passed
+# attendu : 51 passed, 2 skipped (les 2 skipped dépendent d'une vraie réponse
+# de DuckDuckGo, niveau 5 de résolution d'identité — aléa réseau, pas un échec)
 
 # 3. Harnais d'évaluation (pièges de démonstration du sujet)
 python scripts/harnais_evaluation.py
@@ -61,10 +62,10 @@ Sortie attendue (8 lignes, ≤ 10 imposées par le sujet) :
 ```
 ============================================================
 1. Acheteur : COUR DES COMPTES | Objet CPV : 72220000
-2. Sortant probable : ALTERMES (couverture: 100%)
-3. Échéance estimée : 2026-12-21 (dernier marché: 2026-07-21) (couverture: 100%)
-4. Concurrents observés : RSM FRANCE (1/11 attribution(s)), GRANT THORNTON (3/11 attribution(s)), CTF CONSEIL (3/11 attribution(s)), ERNST ET YOUNG ADVISORY (...) (2/11 attribution(s)), PRICEWATERHOUSECOOPERS ADVISORY (1/11 attribution(s)) (couverture: 100%)
-5. Fourchette de prix : 41,864 € — 95,840 € (n=11, indicatif)
+2. Sortant probable : GRANT THORNTON (couverture: 100%)
+3. Échéance estimée : 2027-01-21 (dernier marché: 2026-07-21) (couverture: 100%)
+4. Concurrents observés : RSM FRANCE (1/11 attribution(s)), ALTERMES (1/11 attribution(s)), CTF CONSEIL (3/11 attribution(s)), PRICEWATERHOUSECOOPERS ADVISORY (1/11 attribution(s)), ERNST ET YOUNG ADVISORY (EY CONSULTING-EY PARTHENON-EY FABERNOVEL) (2/11 attribution(s)) (couverture: 100%)
+5. Fourchette de prix : 41,864 € — 95,840 € (n=11, indicatif) (couverture: 100%)
 6. Pondération de l'acheteur : non disponible (couverture: 0%)
 7. Historique : 11 marché(s) similaire(s) observé(s)
 8. COUVERTURE GLOBALE : 89%
@@ -94,7 +95,7 @@ print(json.dumps(construire_fiche_de_faits('11000028800016', '72220000'), indent
 python scripts/mesurer_precision_resolution.py
 ```
 
-Attendu : 87% global / 97% hors homonymie (cible sujet : >90%, atteinte hors le cas explicitement réservé à l'agent S6/niveau 4).
+Attendu : 92% global / 100% hors homonymie (cible sujet : >90%, **désormais atteinte sur le chiffre global** — cf. rapport de stage, section 15, pour l'historique 87%/97% et l'analyse de la hausse).
 
 ### D. Embeddings — CPV mal saisi retrouvé par similarité (S4)
 
@@ -147,9 +148,10 @@ Résultat vérifié : `{'siret': '38012986600...', 'siren': '380129866', 'method
 
 | Question | Réponse courte | Détail |
 |---|---|---|
-| Pourquoi 87% et pas 90% sur la résolution d'identité ? | Le seul sous-type en échec (homonymie réelle, ex. "SMILE" : 112 entreprises françaises identiques) est traité par le niveau 4 (agent d'investigation d'identité, implémenté) : 2/6 cas résolus légitimement via l'historique SIRENE, 4/6 restent structurellement indécidables (aucun contexte acheteur, aucun historique de renommage). Hors homonymie : 97%. | `docs/rapport_de_stage.md`, section 4 et 11 |
+| La résolution d'identité atteint-elle la cible du sujet (>90%) ? | Oui, depuis le 31/08/2026 : 92% global (contre 87% avant l'ajout de la résolution des entrepreneurs individuels et d'un tie-break sur le statut administratif). Hors homonymie non résoluble par le nom seul : 100%. | `docs/rapport_de_stage.md`, sections 4, 11 et 15 |
 | Le sortant est-il fiable ? | Confiance calculée (aucune/faible/moyenne/élevée) selon le nombre de vagues de marchés ET leur cohérence temporelle, jamais juste le volume. | `scripts/detecter_sortant.py` |
 | Que se passe-t-il si l'acheteur n'a aucun historique ? | `DONNÉES INSUFFISANTES`, jamais un sortant inventé — testé dans le harnais. | `python scripts/harnais_evaluation.py` |
 | Et les filiales ? | Non modélisées volontairement (aucun dataset de structure de groupe chargé) ; documenté comme limite assumée plutôt que simulé par heuristique non fiable. | `scripts/graphe_concurrentiel.py`, docstring |
-| Qu'est-ce qui reste à faire ? | S6 (agent d'enrichissement web, seul agent restant, explicitement optionnel selon le sujet). S7 et S8 sont faits — les 6 métriques de la section 8 du sujet sont toutes mesurées depuis le 19/08/2026. | `docs/rapport_de_stage.md`, sections 8 et 12 |
+| Qu'est-ce qui reste à faire ? | Les 3 agents S6 sont désormais implémentés. Restent hors périmètre : BOAMP, Pappers/Infogreffe (2 des 6 sources du sujet), Pydantic/JSON Schema (sujet, section 9). | `docs/rapport_de_stage.md`, sections 8 et 15 |
 | Précision du sortant et coût/latence sont-ils mesurés ? | Oui : 6/6 (100%) sur le SIREN du sortant (1 cas exclu et documenté, structurellement indécidable) ; coût 0,00 EUR par briefing (aucune passerelle LLM), latence médiane ~31-34 ms sur un cas riche/ambigu, ~152 ms sur un cas qui déclenche réellement l'agent d'expansion. | `python scripts/mesurer_precision_sortant.py` et `python scripts/mesurer_cout_latence_briefing.py` |
+| L'agent d'enrichissement web est-il fiable ? | Implémenté (niveau 5, dernier recours), mais réseau-dépendant par nature : le connecteur scrape l'interface HTML de DuckDuckGo (aucune API gratuite stable n'existe pour cet usage), qui peut répondre par un défi anti-bot plutôt que des résultats. Dégradation gracieuse vérifiée : le briefing reste valide, simplement sans ce candidat. | `scripts/agent_enrichissement_web.py`, `connectors/web_ouvert.py` |

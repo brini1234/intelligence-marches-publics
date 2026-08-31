@@ -294,9 +294,12 @@ def executer():
         verbe = "reste" if nb_restants <= 1 else "restent"
         print(f"{nb_restants} cas {verbe} à couvrir par les futurs agents")
     else:
-        print("Tous les pièges du sujet (section 8) sont couverts. Seul l'agent "
-              "d'enrichissement web (optionnel selon le sujet) reste hors périmètre, "
-              "sans piège spécifique associé.")
+        print("Tous les pièges du sujet (section 8) sont couverts. Les 3 agents du "
+              "sujet (section 4) sont désormais implémentés — investigation d'identité, "
+              "expansion pilotée par la couverture, enrichissement web (niveau 5 de "
+              "résolution d'identité, cf. scripts/agent_enrichissement_web.py) ; ce "
+              "dernier reste réseau-dépendant et sans garantie par nature (sujet, "
+              "section 3), sans piège spécifique associé en section 8.")
     print("=" * 70)
 
     return nb_echecs == 0

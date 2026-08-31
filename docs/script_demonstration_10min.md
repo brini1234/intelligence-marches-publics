@@ -1,10 +1,10 @@
 # Script de démonstration — 10 minutes (sujet, section 7)
 
-Déroulé minuté pour la soutenance. Toutes les commandes et sorties ci-dessous ont été ré-exécutées et vérifiées le 21/08/2026 — pas des exemples reconstruits. Complément du guide plus large (`docs/guide_demonstration.md`, checklist avant-présentation, Q&A, filet de sécurité) : ce document-ci est le script à suivre minute par minute, lui reste la référence technique complète.
+Déroulé minuté pour la soutenance. Toutes les commandes et sorties ci-dessous ont été ré-exécutées et vérifiées le 31/08/2026 — pas des exemples reconstruits. Complément du guide plus large (`docs/guide_demonstration.md`, checklist avant-présentation, Q&A, filet de sécurité) : ce document-ci est le script à suivre minute par minute, lui reste la référence technique complète.
 
 **Objectif du sujet (section 7)** : *« démonstration de 10 minutes : acheteur et objet de marché vers un bloc de décision source »*. Deux moments de démo live, un fil conducteur : partir d'un acheteur et d'un objet de marché, arriver à un bloc de décision, montrer qu'il est sourcé et honnête sur ce qu'il ne sait pas.
 
-**Avant de commencer** : dérouler la checklist de `docs/guide_demonstration.md` (PostgreSQL up, `pytest tests/ -q` → 44 passed, `harnais_evaluation.py` → 10/10). Terminal déjà ouvert dans le dépôt, `venv` déjà activé.
+**Avant de commencer** : dérouler la checklist de `docs/guide_demonstration.md` (PostgreSQL up, `pytest tests/ -q` → 51 passed, 2 skipped, `harnais_evaluation.py` → 10/10). Terminal déjà ouvert dans le dépôt, `venv` déjà activé.
 
 ---
 
@@ -22,7 +22,7 @@ Pas de terminal ici — uniquement le message.
 
 ## 1:30 – 2:30 — Architecture en 3 principes (60s)
 
-**À dire** : *« Trois principes : les faits sont calculés, jamais générés — tous les chiffres viennent de requêtes SQL, un modèle de langage se contenterait de les mettre en mots (pas branché ici, pas de passerelle LLM configurée). Cœur déterministe, périphérie agentique — deux agents implémentés sur les trois prévus par le sujet, uniquement là où l'espace de recherche est réellement ouvert. Et la couverture est un citoyen de première classe — chaque section du briefing affiche son taux de complétude, jamais un 100% de façade. »*
+**À dire** : *« Trois principes : les faits sont calculés, jamais générés — tous les chiffres viennent de requêtes SQL, un modèle de langage se contenterait de les mettre en mots (pas branché ici, pas de passerelle LLM configurée). Cœur déterministe, périphérie agentique — les trois agents prévus par le sujet sont implémentés, uniquement là où l'espace de recherche est réellement ouvert. Et la couverture est un citoyen de première classe — chaque section du briefing affiche son taux de complétude, jamais un 100% de façade. »*
 
 Optionnel : montrer rapidement le schéma bronze/silver/gold du README si un support visuel est disponible.
 
@@ -39,7 +39,7 @@ afficher_bloc(lignes)
 "
 ```
 
-Sortie attendue (vérifiée le 21/08/2026) :
+Sortie attendue (vérifiée le 31/08/2026, inchangée depuis le 21/08) :
 
 ```
 ============================================================
@@ -113,11 +113,11 @@ Sortie : `{'siret': '38012986648625', 'siren': '380129866', 'methode': 'investig
 
 ## 7:00 – 8:30 — Les chiffres mesurés (1 min 30)
 
-**À dire, sans montrer de terminal (gain de temps)** — citer de mémoire ou depuis une slide, tous vérifiés le 21/08/2026 :
+**À dire, sans montrer de terminal (gain de temps)** — citer de mémoire ou depuis une slide, tous vérifiés le 31/08/2026 :
 
-- Suite de tests : **44/44 passed**
+- Suite de tests : **51 passed, 2 skipped** (les 2 `skipped` dépendent d'une vraie réponse de DuckDuckGo, niveau 5/agent web — aléa réseau, pas un échec)
 - Harnais d'évaluation (5 pièges du sujet) : **10/10**
-- Précision de résolution d'identité : **87% global / 97% hors homonymie** (cible sujet : >90%, cause de l'écart identifiée et documentée)
+- Précision de résolution d'identité : **92% global / 100% hors homonymie** — **cible sujet (>90%) atteinte**
 - Précision de détection du sortant : **6/6 (100%)** sur cas connus
 - Coût par briefing : **0,00 €** (aucune passerelle LLM configurée) — latence **30-155 ms** selon le cas
 - Contrôle référentiel SIRENE : **8/8**
@@ -126,11 +126,11 @@ Sortie : `{'siret': '38012986648625', 'siren': '380129866', 'methode': 'investig
 
 ## 8:30 – 9:30 — Limites assumées, pas cachées (1 min)
 
-**À dire** : *« Trois limites documentées, pas découvertes en soutenance : la résolution d'identité n'atteint pas 90% globalement — la cause est l'homonymie réelle, ex. 112 entreprises françaises nommées "SMILE", un cas que le sujet lui-même réserve à un agent plus poussé. Deux sources sur six ne sont pas connectées : BOAMP et Pappers/Infogreffe. Et le troisième agent prévu par le sujet, l'enrichissement web, n'est pas construit — explicitement optionnel selon le sujet lui-même. »*
+**À dire** : *« Deux limites documentées, pas découvertes en soutenance : deux sources sur six ne sont pas connectées — BOAMP et Pappers/Infogreffe. Et les sorties structurées prescrites par le sujet — Pydantic, JSON Schema — ne sont pas utilisées ; la cohérence des fiches de faits repose sur le code et les tests, pas sur un schéma déclaratif. Un résidu d'homonymie non résoluble par le nom seul subsiste aussi — ex. 112 entreprises françaises nommées "SMILE" — mais n'empêche plus d'atteindre la cible du sujet sur le chiffre global. »*
 
 ## 9:30 – 10:00 — Conclusion (30s)
 
-**À dire** : *« Sur les 8 semaines du sujet : la base de données, la résolution d'identité, la détection du sortant, deux agents sur trois, la porte anti-hallucination et les 6 métriques de la section 8 sont livrés et mesurés. Ce qui reste est documenté, pas caché — BOAMP/Pappers, l'agent web, et faire passer la résolution d'identité au-dessus de 90%. »*
+**À dire** : *« Sur les 8 semaines du sujet : la base de données, la résolution d'identité (92%, cible du sujet atteinte), la détection du sortant, les 3 agents prévus, la porte anti-hallucination et les 6 métriques de la section 8 sont livrés et mesurés. Ce qui reste est documenté, pas caché — BOAMP/Pappers, et la validation par schéma déclaratif (Pydantic/JSON Schema). »*
 
 ---
 
