@@ -13,7 +13,10 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- TED et DECP sur CPV restreint, couches bronze/silver/gold, déduplication,
 -- versionnement"). Trois étages :
 --
---   BRONZE  : copie brute, APPEND-ONLY, jamais écrasée. Une exécution de
+--   BRONZE  : copie brute COMPLÈTE (France, fenêtre de 3 ans, TOUS
+--             SECTEURS — depuis le 31/08/2026, plus de filtre CPV à
+--             l'import, cf. README section "Pipeline de données"),
+--             APPEND-ONLY, jamais écrasée. Une exécution de
 --             scripts/charger_bronze_decp.py ou charger_bronze_ted.py
 --             insère de nouvelles lignes ; plusieurs lignes peuvent
 --             partager le même uid si le pipeline est relancé après une
@@ -28,16 +31,24 @@ CREATE EXTENSION IF NOT EXISTS vector;
 --             jamais inventé) et normalisée dans un schéma unifié DECP/TED.
 --             Détecte aussi les doublons probables entre sources (même
 --             acheteur, CPV, montant proche, dates proches) et les flague
---             (doublon_probable_de) sans jamais les supprimer.
+--             (doublon_probable_de) sans jamais les supprimer. Reste elle
+--             aussi non filtrée par CPV : une couche de nettoyage général,
+--             pas encore le périmètre métier de ce produit.
 --
 --   GOLD    : les tables métier ci-dessous (entreprises, etablissements,
 --             acheteurs, marches, attributions) — structure inchangée par
 --             cette architecture. Reconstruites par
---             scripts/construire_gold_marches.py depuis silver_marches
---             (les lignes flaguées comme doublons n'y créent pas de ligne
---             marches séparée, pour ne pas compter deux fois le même
---             marché dans les métriques de concurrence des parties
---             suivantes).
+--             scripts/construire_gold_marches.py depuis silver_marches.
+--             **C'est ICI, et ici seulement, que le périmètre CPV 72xxxxxx
+--             du sujet (section 6, "services informatiques") est
+--             appliqué** (WHERE code_cpv LIKE '72%', constante
+--             PREFIXE_CPV_PERIMETRE) — jamais à l'import, pour ne jamais
+--             écarter définitivement un marché mal étiqueté à la source
+--             (le sujet documente lui-même, section 3, que les codes CPV
+--             DECP sont "saisis approximativement"). Les lignes flaguées
+--             comme doublons, ou hors de ce périmètre CPV, n'y créent pas
+--             de ligne marches séparée — silver reste consultable pour
+--             audit dans tous les cas.
 -- =====================================================================
 
 -- BRONZE — DECP brut, une ligne par (uid, date_chargement). Colonnes en

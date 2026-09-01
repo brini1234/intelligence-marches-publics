@@ -1,8 +1,8 @@
 """
 Agent "Expansion pilotée par la couverture" (sujet, section 4 : un des 3
-agents prévus — l'investigation d'identité est aussi implémentée, cf.
-scripts/agent_investigation_identite.py ; seul l'enrichissement web reste
-hors périmètre, explicitement optionnel selon le sujet, cf. README).
+agents prévus — les deux autres sont aussi implémentés : investigation
+d'identité (scripts/agent_investigation_identite.py) et enrichissement web
+(scripts/agent_enrichissement_web.py, optionnel selon le sujet, cf. README).
 
 Pas d'appel à un modèle de langage : ce module prend ses décisions (quel axe
 élargir, quand s'arrêter) via une procédure déterministe qui interroge la

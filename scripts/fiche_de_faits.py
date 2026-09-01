@@ -11,6 +11,7 @@ from scripts.agent_expansion_couverture import (
     detecter_centrale_achat,
     SEUIL_COUVERTURE_SUFFISANTE,
 )
+from scripts.schemas import FicheDeFaits
 
 SCORES_COUVERTURE = {
     "élevée": 1.0,
@@ -25,6 +26,23 @@ SCORES_COUVERTURE = {
 # dégrade donc la confiance qu'on peut avoir sur la liste des concurrents,
 # même si le sortant lui-même reste bien identifié.
 COUVERTURE_MAX_SI_CONCURRENT_ETRANGER = 0.33  # plafonnée à "faible", jamais mieux
+
+
+def _valider(fiche: dict) -> dict:
+    """
+    Sortie structurée, validation systématique (sujet, section 9 :
+    "Pydantic et JSON Schéma, validation systématique") : chaque fiche de
+    faits produite par construire_fiche_de_faits() passe par
+    scripts.schemas.FicheDeFaits avant d'être renvoyée à l'appelant — une
+    valeur de type inattendu, une couverture hors [0,1] ou une provenance
+    vide lève une erreur de validation ici, immédiatement, plutôt que de se
+    propager silencieusement jusqu'au texte verbalisé. model_dump(mode=
+    "json", exclude_none=True) : round-trip fidèle (Decimal -> nombre JSON)
+    sans introduire de clés absentes ("raison"/"marches_support") que
+    l'ancien code ne produisait pas non plus dans chaque branche — tous les
+    appelants existants y accèdent déjà défensivement via .get(...).
+    """
+    return FicheDeFaits(**fiche).model_dump(mode="json", exclude_none=True)
 
 
 def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
@@ -46,11 +64,11 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
     with engine.connect() as connexion:
         centrale = detecter_centrale_achat(siret_acheteur, connexion)
     if centrale is not None:
-        return {
+        return _valider({
             "faits": [],
             "couverture_globale": 0.0,
             "raison": construire_message_centrale_achat(centrale),
-        }
+        })
 
     resultat = detecter_sortant(siret_acheteur, code_cpv)
     expansions_appliquees: list[dict] = []
@@ -63,11 +81,11 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
         expansion = agent_expansion_couverture(siret_acheteur, code_cpv)
 
         if expansion["type"] == "donnees_insuffisantes":
-            return {
+            return _valider({
                 "faits": [],
                 "couverture_globale": 0.0,
                 "raison": expansion["message"],
-            }
+            })
 
         resultat = expansion["resultat_sortant"]
         expansions_appliquees = expansion["expansions_appliquees"]
@@ -75,11 +93,11 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
     score = SCORES_COUVERTURE.get(resultat["confiance"], 0.0)
 
     if resultat["sortant_probable"] is None:
-        return {
+        return _valider({
             "faits": [],
             "couverture_globale": 0.0,
             "raison": resultat["raison"],
-        }
+        })
 
     historique = resultat["historique"]
 
@@ -243,11 +261,11 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
     # pas juste le meilleur cas)
     couverture_globale = sum(f["couverture"] for f in faits) / len(faits)
 
-    return {
+    return _valider({
         "faits": faits,
         "couverture_globale": round(couverture_globale, 2),
         "marches_support": resultat["marches_support"],
-    }
+    })
 
 
 if __name__ == "__main__":

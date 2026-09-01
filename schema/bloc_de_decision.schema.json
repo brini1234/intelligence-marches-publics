@@ -1,0 +1,19 @@
+{
+  "description": "Sujet, section 2 : \"la sortie principale est un bloc de décision de\n10 lignes maximum\".",
+  "properties": {
+    "lignes": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Lignes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "lignes"
+  ],
+  "title": "BlocDeDecision",
+  "type": "object"
+}

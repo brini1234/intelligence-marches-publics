@@ -1,7 +1,10 @@
 """
 Chargement de la couche BRONZE TED (sujet, section 6, S2 : couches
-bronze/silver/gold). Périmètre conforme au sujet : CPV 72xxxxxx, France,
-historique de 3 ans (section 6).
+bronze/silver/gold). Depuis le 31/08/2026 : bronze est une copie brute
+COMPLÈTE (France, fenêtre de 3 ans, tous secteurs, ~7 900 avis) — plus de
+filtre CPV à l'import (cf. connectors/ted.py::exporter_perimetre_complet).
+Le périmètre CPV 72xxxxxx du sujet (section 6) est appliqué en aval, comme
+règle métier explicite dans scripts/construire_gold_marches.py.
 
 Ce script ne fait QUE charger le brut dans bronze_ted_notices (APPEND-ONLY,
 jamais d'UPDATE ni de DELETE — c'est le "versionnement" : relancer ce
@@ -11,9 +14,10 @@ le rôle de scripts/transformer_silver_marches.py (déduplication, validation
 des SIRET — jamais un SIRET inventé si absent) puis
 scripts/construire_gold_marches.py (tables métier).
 
-Volume TED sur ce périmètre : quelques centaines d'avis (330 au
-2026-08-03) — insertion SQL directe, pas de COPY/staging nécessaire
-contrairement à DECP (millions de lignes).
+Volume TED France/3 ans, tous secteurs : ~7 900 avis (contre ~330 avec
+l'ancien filtre CPV72 en dur, vérifié le 31/08/2026) — insertion SQL
+directe, pas de COPY/staging nécessaire contrairement à DECP (~1,15M
+lignes).
 
 Usage :
     python scripts/charger_bronze_ted.py

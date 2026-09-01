@@ -1,9 +1,15 @@
 """
 Chargement de la couche BRONZE DECP (sujet, section 6, S2 : couches
-bronze/silver/gold). Périmètre conforme au sujet : CPV 72xxxxxx, France,
-historique de 3 à 5 ans (section 6). Le filtrage se fait uniquement par
-périmètre (préfixe CPV, fenêtre temporelle), jamais par choix manuel d'un
-acheteur en particulier.
+bronze/silver/gold). Depuis le 31/08/2026 : bronze est une copie brute
+COMPLÈTE (France, fenêtre de 3 ans, tous secteurs, ~1,15M lignes) — plus de
+filtre CPV à l'import. Le périmètre CPV 72xxxxxx du sujet (section 6) est
+appliqué en aval, comme règle métier explicite dans
+scripts/construire_gold_marches.py, jamais à l'import : filtrer par CPV
+avant le chargement écarterait définitivement tout marché mal étiqueté à la
+source (le sujet documente lui-même, section 3, que les codes CPV DECP sont
+"saisis approximativement") sans trace ni rattrapage possible. Jamais de
+choix manuel d'un acheteur en particulier non plus (le périmètre France/3
+ans est chargé automatiquement, dans son intégralité).
 
 Ce script ne fait QUE charger le brut dans bronze_decp_marches (APPEND-ONLY,
 jamais d'UPDATE ni de DELETE — c'est le "versionnement" : relancer ce script
@@ -64,7 +70,7 @@ def _copier_csv(connexion_brute, chemin_csv: str) -> int:
     return nb_lignes
 
 
-def charger_bronze_decp(prefixe_cpv: str | None = "72"):
+def charger_bronze_decp(prefixe_cpv: str | None = None):
     engine = get_engine()
 
     print("Export du périmètre depuis le Parquet DECP (DuckDB) ...")

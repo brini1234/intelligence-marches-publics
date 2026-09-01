@@ -48,7 +48,21 @@ def _resoudre_acheteurs_niveaux_2_3(connexion) -> int:
     appliqués aux acheteurs dont l'identifiant brut a échoué au niveau 1
     (siret_acheteur encore NULL en silver_marches à ce stade). Ne touche
     jamais une ligne déjà résolue au niveau 1.
+
+    Cache local (identifiant_brut, nom_brut) -> résultat, valable pour toute
+    la durée de cet appel : `resoudre()` n'a ici aucun paramètre de contexte
+    (siret_acheteur) susceptible de faire varier le résultat pour un même
+    identifiant/nom, donc la mémoïsation est strictement sans risque de
+    résultat périmé. Nécessaire depuis le passage à un périmètre France
+    complet, tous secteurs, non filtré par CPV à l'import (31/08/2026, cf.
+    README) : le même acheteur mal identifié revient potentiellement dans
+    des dizaines de milliers de lignes bronze, et `resoudre_par_similarite()`
+    (pg_trgm contre 29,8M lignes) coûte jusqu'à plusieurs secondes par appel
+    — documenté comme limite acceptable "au volume actuel, à revoir si le
+    volume grossit significativement" (README) : le volume vient de grossir
+    d'un facteur ~40.
     """
+    cache: dict[tuple[str | None, str | None], list[dict]] = {}
     lignes = connexion.execute(text(r"""
         SELECT uid, acheteur_id AS identifiant_brut, acheteur_nom AS nom_brut
         FROM bronze_decp_marches
@@ -65,7 +79,12 @@ def _resoudre_acheteurs_niveaux_2_3(connexion) -> int:
 
     nb_resolus = 0
     for uid, identifiant_brut, nom_brut in lignes:
-        resultats = resoudre(identifiant_brut, nom_brut, connexion)
+        cle_cache = (identifiant_brut, nom_brut)
+        if cle_cache in cache:
+            resultats = cache[cle_cache]
+        else:
+            resultats = resoudre(identifiant_brut, nom_brut, connexion)
+            cache[cle_cache] = resultats
         if not resultats:
             continue
         r = resultats[0]  # un seul acheteur par marché : premier résultat retenu
@@ -90,7 +109,19 @@ def _resoudre_titulaires_niveaux_2_3(connexion) -> int:
     Jointure sur silver_marches pour récupérer le siret_acheteur déjà résolu
     (étape précédente, ci-dessus) : ce contexte active gratuitement le
     niveau 4a (continuité de marché, scripts/resolution_identite.py) en cas
-    d'homonymie ambiguë au niveau 3 — purement SQL, aucun appel réseau."""
+    d'homonymie ambiguë au niveau 3 — purement SQL, aucun appel réseau.
+
+    Cache local (identifiant_brut, nom_brut, siret_acheteur) -> résultats,
+    même principe et même raison que _resoudre_acheteurs_niveaux_2_3
+    ci-dessus (volume France complet depuis le 31/08/2026, ~40x plus gros).
+    Le siret_acheteur fait partie de la clé (contrairement au cache
+    acheteurs) car il peut réellement changer le résultat ici, via le
+    niveau 4a — un même titulaire ambigu peut être désambiguïsé différemment
+    selon l'acheteur contextuel. Un même (titulaire, acheteur) revient très
+    fréquemment (plusieurs marchés/lots attribués au même titulaire par le
+    même acheteur), donc le gain reste substantiel malgré la clé plus fine.
+    """
+    cache: dict[tuple[str | None, str | None, str | None], list[dict]] = {}
     lignes = connexion.execute(text(r"""
         SELECT DISTINCT bdm.uid, bdm.titulaire_id AS identifiant_brut, bdm.titulaire_nom AS nom_brut,
                'DECP' AS source, sm.siret_acheteur
@@ -111,7 +142,13 @@ def _resoudre_titulaires_niveaux_2_3(connexion) -> int:
 
     nb_resolus = 0
     for uid, identifiant_brut, nom_brut, source, siret_acheteur in lignes:
-        for r in resoudre(identifiant_brut, nom_brut, connexion, siret_acheteur=siret_acheteur):
+        cle_cache = (identifiant_brut, nom_brut, siret_acheteur)
+        if cle_cache in cache:
+            resultats = cache[cle_cache]
+        else:
+            resultats = resoudre(identifiant_brut, nom_brut, connexion, siret_acheteur=siret_acheteur)
+            cache[cle_cache] = resultats
+        for r in resultats:
             resultat = connexion.execute(text("""
                 INSERT INTO silver_attributions (uid, siret_titulaire, nom_titulaire, source, methode_resolution, score_confiance)
                 VALUES (:uid, :siret, :nom, :source, :methode, :score)

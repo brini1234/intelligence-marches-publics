@@ -71,21 +71,30 @@ def rechercher_marches_par_acheteur(siret_acheteur: str, limite: int = 50) -> li
 
 
 def exporter_perimetre_complet_csv(
-    prefixe_cpv: str | None = "72",
+    prefixe_cpv: str | None = None,
     chemin_sortie: str = "data/decp/perimetre_complet.csv",
 ) -> tuple[str, int]:
     """
-    Exporte l'intégralité du périmètre demandé (tous acheteurs du périmètre
-    CPV retenu, données actuelles, fenêtre de 3 ans) directement en CSV via
-    DuckDB, prêt pour un COPY PostgreSQL. Le filtrage se fait entièrement en
-    SQL DuckDB — aucune boucle Python sur des millions de lignes, contrairement
-    à un import ligne à ligne qui ne terminerait pas en un temps raisonnable à
-    cette échelle (cf. scripts/importer_stock_sirene_national.py, même principe).
+    Exporte les marchés France/3 ans directement en CSV via DuckDB, prêt
+    pour un COPY PostgreSQL. Le filtrage se fait entièrement en SQL DuckDB
+    — aucune boucle Python sur des millions de lignes, contrairement à un
+    import ligne à ligne qui ne terminerait pas en un temps raisonnable à
+    cette échelle (cf. scripts/importer_stock_sirene_national.py, même
+    principe).
 
-    prefixe_cpv="72" (par défaut) : périmètre proposé par le sujet (section 6)
-    — "services informatiques (CPV 72xxxxxx), France, historique de 3 à 5 ans".
-    Passer prefixe_cpv=None permet d'exporter tous secteurs si besoin ponctuel,
-    mais ce n'est pas le périmètre du stage.
+    prefixe_cpv=None (par défaut, depuis le 31/08/2026) : PAS de filtre CPV
+    à l'export — la totalité du périmètre France/3 ans, tous secteurs
+    (~1,15M lignes), est chargée dans bronze_decp_marches. Le sujet
+    documente lui-même que les codes CPV sont "saisis approximativement"
+    côté DECP (section 3) : filtrer par CPV *avant* le chargement écarterait
+    définitivement, sans trace ni possibilité de rattrapage, tout marché
+    réellement en périmètre mais mal étiqueté à la source — contraire au
+    principe du projet de ne jamais fausser une jointure ni masquer un trou.
+    Le périmètre CPV 72xxxxxx proposé par le sujet (section 6, "services
+    informatiques") reste appliqué, mais en aval, comme règle métier
+    explicite et auditable dans scripts/construire_gold_marches.py — jamais
+    à l'import. Passer prefixe_cpv="72" reste possible (ancien comportement,
+    utile pour un export ponctuel restreint) mais n'est plus le défaut.
     """
     parquet_path = _download_parquet_if_needed()
     today = date.today()

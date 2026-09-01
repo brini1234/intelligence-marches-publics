@@ -91,20 +91,27 @@ def _rechercher_page(query: str, iteration_token: str | None = None) -> dict:
     return reponse.json()
 
 
-def _code_cpv_du_perimetre(identifiants_cpv: list[str], prefixe_cpv: str) -> str | None:
+def _code_cpv_du_perimetre(identifiants_cpv: list[str], prefixe_cpv: str | None) -> str | None:
     """
     Un avis TED porte souvent plusieurs codes CPV (classification-cpv est une
-    liste). La requête filtre sur "au moins un code commence par prefixe_cpv",
-    donc le premier élément de la liste n'est pas forcément celui qui a fait
-    matcher le filtre — le stocker tel quel pouvait silencieusement placer un
-    marché hors périmètre 72xxxxxx dans `marches.code_cpv` (bug trouvé en
-    vérifiant la base : 45/273 marchés TED concernés). On préfère donc le
-    code qui appartient réellement au périmètre demandé ; à défaut (ne
-    devrait pas arriver vu le filtre de requête, mais pas d'hypothèse
-    aveugle), on retombe sur le premier élément plutôt que de perdre le CPV.
+    liste). Quand la requête filtre sur "au moins un code commence par
+    prefixe_cpv" (prefixe_cpv non None), le premier élément de la liste
+    n'est pas forcément celui qui a fait matcher le filtre — le stocker tel
+    quel pouvait silencieusement placer un marché hors périmètre 72xxxxxx
+    dans `marches.code_cpv` (bug trouvé en vérifiant la base : 45/273
+    marchés TED concernés). On préfère donc le code qui appartient
+    réellement au périmètre demandé ; à défaut, on retombe sur le premier
+    élément plutôt que de perdre le CPV.
+
+    prefixe_cpv=None (défaut depuis le 31/08/2026, cf. exporter_perimetre_complet
+    ci-dessous) : aucun filtre de périmètre n'est appliqué à la requête —
+    on retient simplement le premier code CPV de la liste, représentatif,
+    sans supposer d'appartenance à un périmètre particulier.
     """
     if not identifiants_cpv:
         return None
+    if prefixe_cpv is None:
+        return identifiants_cpv[0]
     return next((c for c in identifiants_cpv if c.startswith(prefixe_cpv)), identifiants_cpv[0])
 
 
@@ -128,22 +135,28 @@ def _normaliser_notice(brute: dict, prefixe_cpv: str) -> dict:
 
 
 def exporter_perimetre_complet(
-    prefixe_cpv: str = "72",
+    prefixe_cpv: str | None = None,
     pays: str = "FRA",
     annees_historique: int = 3,
 ) -> list[dict]:
     """
-    Récupère l'intégralité des avis d'attribution (form-type=result) du
-    périmètre demandé — tous acheteurs, aucune sélection manuelle — via
+    Récupère l'intégralité des avis d'attribution (form-type=result) France/
+    3 ans — tous secteurs, tous acheteurs, aucune sélection manuelle — via
     pagination complète par itérationNextToken jusqu'à épuisement des
-    résultats. Périmètre par défaut conforme au sujet (section 6) :
-    CPV 72xxxxxx, France, 3 ans.
+    résultats.
+
+    prefixe_cpv=None (défaut depuis le 31/08/2026) : aucun filtre CPV à la
+    requête — ~7 900 avis (contre ~330 avec l'ancien filtre CPV 72xxxxxx en
+    dur). Même raisonnement que connectors/decp.py : filtrer par CPV à la
+    source écarterait définitivement tout marché mal étiqueté. Le périmètre
+    CPV 72xxxxxx du sujet (section 6) est appliqué en aval, dans
+    scripts/construire_gold_marches.py. Passer prefixe_cpv="72" reste
+    possible pour un export ponctuel restreint (ancien comportement).
     """
     date_min = date.today() - timedelta(days=365 * annees_historique)
-    query = (
-        f"classification-cpv={prefixe_cpv}* AND buyer-country={pays} "
-        f"AND publication-date>={date_min:%Y%m%d} AND form-type=result"
-    )
+    query = f"buyer-country={pays} AND publication-date>={date_min:%Y%m%d} AND form-type=result"
+    if prefixe_cpv:
+        query = f"classification-cpv={prefixe_cpv}* AND {query}"
 
     notices: list[dict] = []
     token = None

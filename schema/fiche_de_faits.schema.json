@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "Fait": {
+      "description": "Un fait unique de la fiche de faits — sujet section 4 : \"chaque fait\nporte sa provenance et son score de couverture\".",
+      "properties": {
+        "cle": {
+          "minLength": 1,
+          "title": "Cle",
+          "type": "string"
+        },
+        "valeur": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valeur"
+        },
+        "provenance": {
+          "minLength": 1,
+          "title": "Provenance",
+          "type": "string"
+        },
+        "couverture": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Couverture",
+          "type": "number"
+        }
+      },
+      "required": [
+        "cle",
+        "valeur",
+        "provenance",
+        "couverture"
+      ],
+      "title": "Fait",
+      "type": "object"
+    }
+  },
+  "description": "Sortie de scripts/fiche_de_faits.py::construire_fiche_de_faits().\nDeux formes possibles, toutes deux valides ici :\n    - faits=[], raison=<texte> : données insuffisantes ou centrale\n      d'achat détectée (aucun fait exploitable) ;\n    - faits=[Fait, ...], marches_support=[uid, ...] : cas normal.",
+  "properties": {
+    "faits": {
+      "items": {
+        "$ref": "#/$defs/Fait"
+      },
+      "title": "Faits",
+      "type": "array"
+    },
+    "couverture_globale": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Couverture Globale",
+      "type": "number"
+    },
+    "raison": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Raison"
+    },
+    "marches_support": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Marches Support"
+    }
+  },
+  "required": [
+    "faits",
+    "couverture_globale"
+  ],
+  "title": "FicheDeFaits",
+  "type": "object"
+}

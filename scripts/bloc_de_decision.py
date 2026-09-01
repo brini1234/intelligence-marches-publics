@@ -2,6 +2,19 @@ import sys
 sys.path.append(".")
 
 from scripts.fiche_de_faits import construire_fiche_de_faits
+from scripts.schemas import BlocDeDecision
+
+
+def _valider(lignes: list[str]) -> list[str]:
+    """
+    Sortie structurée, validation systématique (sujet, section 9). Sujet,
+    section 2 : "bloc de décision de 10 lignes maximum" — devient ici une
+    contrainte structurelle (BlocDeDecision, max_length=10), pas seulement
+    une convention respectée par construction du code appelant : un futur
+    ajout de ligne qui dépasserait la limite lève une erreur de validation
+    immédiate plutôt que de silencieusement produire un bloc trop long.
+    """
+    return BlocDeDecision(lignes=lignes).lignes
 
 
 def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur: str = None) -> list[str]:
@@ -12,11 +25,11 @@ def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur
     fiche = construire_fiche_de_faits(siret_acheteur, code_cpv)
 
     if not fiche["faits"]:
-        return [
+        return _valider([
             f"Acheteur : {nom_acheteur or siret_acheteur} | Objet CPV : {code_cpv}",
             f"DONNÉES INSUFFISANTES : {fiche.get('raison', 'aucune information disponible')}",
             "COUVERTURE GLOBALE : 0%",
-        ]
+        ])
 
     valeurs = {f["cle"]: f for f in fiche["faits"]}
 
@@ -48,7 +61,7 @@ def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur
         f"Historique : {valeurs['nombre_marches_historique']['valeur']} marché(s) similaire(s) observé(s)",
         f"COUVERTURE GLOBALE : {fiche['couverture_globale']:.0%}",
     ]
-    return lignes
+    return _valider(lignes)
 
 
 def afficher_bloc(lignes: list[str]) -> None:

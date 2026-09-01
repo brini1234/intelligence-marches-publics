@@ -6,8 +6,9 @@ groupe, site de l'entreprise)"). Le sujet le qualifie de "le plus rentable
 des trois, car l'identité est le principal risque qualité".
 
 Deux mécanismes réels, sans passerelle LLM ni recherche web générique
-(l'agent d'enrichissement web est un agent séparé, explicitement optionnel,
-hors périmètre — cf. README) :
+(l'agent d'enrichissement web, niveau 5, est un agent séparé et implémenté
+lui aussi — scripts/agent_enrichissement_web.py, dernier recours après
+échec des niveaux 1-4, cf. README) :
     - continuité de marché (niveau 4a) : implémentée directement dans
       scripts/resolution_identite.py (resoudre_par_continuite_acheteur),
       purement SQL, utilisée en direct pendant transformer_silver_marches.py
