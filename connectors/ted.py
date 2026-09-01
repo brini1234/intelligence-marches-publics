@@ -3,8 +3,23 @@ Connecteur TED (Tenders Electronic Daily) — API Search publique v3, sans clé.
 
 Vérifié en conditions réelles le 2026-08-03 (comme le préconise le sujet S1,
 "explorer TED à la main") contre https://api.ted.europa.eu/v3/notices/search :
-    - POST, corps JSON {"query": ..., "fields": [...], "scope": "ACTIVE",
+    - POST, corps JSON {"query": ..., "fields": [...], "scope": "ALL",
       "paginationMode": "ITERATION"}, anonyme (aucune clé requise).
+    - **`scope` : "ALL" (couvre l'archive complète), jamais "ACTIVE".**
+      Bug trouvé le 01/09/2026 en vérifiant la profondeur historique
+      réellement couverte (sujet, section 5 : *"documenter la profondeur
+      historique réellement couverte"*) : `scope="ACTIVE"` ne renvoie que
+      les avis encore "actifs" dans le système TED (non archivés) — vérifié
+      en base, ~7 990 avis couvrant seulement avril-août 2026 (~4 mois),
+      alors que le pipeline prétendait couvrir 3 ans partout dans la
+      documentation. `scope="ALL"` sur la même requête (même fenêtre de 3
+      ans, même filtre pays/type) renvoie 101 773 avis avec des dates
+      remontant exactement au 1er jour de la fenêtre demandée (vérifié en
+      direct : `publication-date>=20230901` renvoie des avis dès
+      2023-09-01) — c'est la bonne valeur pour une analyse d'attributions
+      passées, `ACTIVE` étant réservé à un usage différent (avis encore en
+      cours de validité dans le système TED, non pertinent pour des
+      marchés déjà attribués).
     - Champs eForms (kebab-case) confirmés utiles pour ce périmètre :
       notice-type, form-type (form-type="result" = avis d'attribution),
       publication-number, publication-date, buyer-name, buyer-country,
@@ -16,10 +31,13 @@ Vérifié en conditions réelles le 2026-08-03 (comme le préconise le sujet S1,
       nom. Absent sur une partie des avis (cf. limite déjà documentée pour
       DECP : jamais un SIRET inventé si absent).
     - Pagination par itérationNextToken (pas de page numérotée).
-    - Pour "services informatiques (CPV 72xxxxxx), France, 3 ans" (périmètre
-      du sujet, section 6) : ~330 avis d'attribution au 2026-08-03. Volume
-      largement gérable par une insertion SQL directe, contrairement à DECP
-      (millions de lignes) qui justifie DuckDB + COPY.
+    - France, 3 ans, tous secteurs (périmètre d'import depuis le
+      31/08/2026, cf. README) avec `scope="ALL"` : 101 773 avis
+      d'attribution au 01/09/2026 (contre ~7 990 avec l'ancien bug de
+      `scope="ACTIVE"`, et ~330 avec l'ancien filtre CPV72 en dur avant le
+      31/08/2026) — toujours une insertion SQL directe (pas de COPY/staging
+      nécessaire, contrairement à DECP dont le volume se compte en
+      millions de lignes).
 """
 import os
 from datetime import date, timedelta
@@ -81,7 +99,7 @@ def _rechercher_page(query: str, iteration_token: str | None = None) -> dict:
         "query": query,
         "fields": CHAMPS,
         "limit": TAILLE_PAGE,
-        "scope": "ACTIVE",
+        "scope": "ALL",
         "paginationMode": "ITERATION",
     }
     if iteration_token:
@@ -138,6 +156,7 @@ def exporter_perimetre_complet(
     prefixe_cpv: str | None = None,
     pays: str = "FRA",
     annees_historique: int = 3,
+    max_pages: int | None = None,
 ) -> list[dict]:
     """
     Récupère l'intégralité des avis d'attribution (form-type=result) France/
@@ -146,12 +165,22 @@ def exporter_perimetre_complet(
     résultats.
 
     prefixe_cpv=None (défaut depuis le 31/08/2026) : aucun filtre CPV à la
-    requête — ~7 900 avis (contre ~330 avec l'ancien filtre CPV 72xxxxxx en
-    dur). Même raisonnement que connectors/decp.py : filtrer par CPV à la
-    source écarterait définitivement tout marché mal étiqueté. Le périmètre
-    CPV 72xxxxxx du sujet (section 6) est appliqué en aval, dans
+    requête — 101 773 avis au 01/09/2026 (`scope="ALL"`, cf. docstring
+    module ; contre ~7 990 avec l'ancien bug `scope="ACTIVE"`, et ~330 avec
+    l'ancien filtre CPV 72xxxxxx en dur avant le 31/08/2026). Même
+    raisonnement que connectors/decp.py : filtrer par CPV à la source
+    écarterait définitivement tout marché mal étiqueté. Le périmètre CPV
+    72xxxxxx du sujet (section 6) est appliqué en aval, dans
     scripts/construire_gold_marches.py. Passer prefixe_cpv="72" reste
     possible pour un export ponctuel restreint (ancien comportement).
+
+    max_pages : borne le nombre de pages récupérées (même principe que
+    connectors/boamp.py::rechercher_resultats_marche) — ajouté le
+    01/09/2026 en conséquence directe du passage à `scope="ALL"` : sans
+    filtre CPV, une récupération complète est ~410 pages (101 773 avis /
+    250 par page), inadapté à un test unitaire qui n'a besoin que de
+    vérifier un comportement, pas le volume exact. None (défaut) récupère
+    l'intégralité, comme avant.
     """
     date_min = date.today() - timedelta(days=365 * annees_historique)
     query = f"buyer-country={pays} AND publication-date>={date_min:%Y%m%d} AND form-type=result"
@@ -160,6 +189,7 @@ def exporter_perimetre_complet(
 
     notices: list[dict] = []
     token = None
+    page_num = 0
     while True:
         page = _rechercher_page(query, iteration_token=token)
         lot = page.get("notices", [])
@@ -174,7 +204,10 @@ def exporter_perimetre_complet(
         notices.extend(n for n in notices_normalisees if n["buyer_country"] == pays)
         token = page.get("iterationNextToken")
         total = page.get("totalNoticeCount", 0)
+        page_num += 1
         if not lot or not token or len(notices) >= total:
+            break
+        if max_pages is not None and page_num >= max_pages:
             break
 
     return notices

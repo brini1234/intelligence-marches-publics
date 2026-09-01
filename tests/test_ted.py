@@ -7,7 +7,7 @@ def test_exporter_perimetre_complet_prefixe_cpv_explicite_filtre_bien():
     # Depuis le 31/08/2026, prefixe_cpv=None est le défaut (bronze n'est
     # plus filtré par CPV à l'import, cf. README) — ce test vérifie donc le
     # filtrage explicite (prefixe_cpv="72"), pas le comportement par défaut.
-    notices = exporter_perimetre_complet(prefixe_cpv="72")
+    notices = exporter_perimetre_complet(prefixe_cpv="72", max_pages=5)
     assert len(notices) > 0
     assert notices[0]["publication_number"] is not None
     # Sur TOUS les avis, pas seulement le premier : un avis TED porte souvent
@@ -32,7 +32,7 @@ def test_exporter_perimetre_complet_par_defaut_ne_filtre_plus_par_cpv():
     # jamais à l'import. On vérifie ici que des avis hors CPV72 sont bien
     # présents dans le résultat par défaut (preuve que le filtre n'est plus
     # appliqué), pas que le volume exact correspond à un chiffre figé.
-    notices = exporter_perimetre_complet()
+    notices = exporter_perimetre_complet(max_pages=3)
     hors_cpv72 = [n for n in notices if not (n["code_cpv"] or "").startswith("72")]
     assert hors_cpv72, "le comportement par défaut devrait inclure des avis hors CPV72xxxxxx (tous secteurs)"
 
