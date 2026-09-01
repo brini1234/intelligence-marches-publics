@@ -46,8 +46,15 @@ class _FakeMessages:
     def __init__(self, textes_ou_exceptions):
         self._items = list(textes_ou_exceptions)
         self.appels = 0
+        # Capture chaque appel réel (kwargs bruts) pour que les tests
+        # puissent vérifier CE QUI A ÉTÉ ENVOYÉ, pas seulement le résultat
+        # final — un mock qui ignore kwargs["model"] masquerait un mauvais
+        # nom de modèle indéfiniment (signalé par l'utilisateur : aucun des
+        # 7 tests précédents ne vérifiait le paramètre `model` transmis).
+        self.kwargs_appels = []
 
     def create(self, **kwargs):
+        self.kwargs_appels.append(kwargs)
         item = self._items[self.appels]
         self.appels += 1
         if isinstance(item, Exception):
@@ -69,6 +76,28 @@ def test_fiche_vide_ne_declenche_aucun_appel_llm():
     texte = verbaliser_via_llm(FICHE_VIDE, client=client)
     assert texte == verbaliser(FICHE_VIDE)
     assert client.messages.appels == 0
+
+
+def test_appel_llm_transmet_le_modele_haiku_exact():
+    # Chaîne littérale, PAS une réimportation de MODELE_LLM comparée à
+    # elle-même (ce qui ne détecterait jamais une faute de frappe dans la
+    # constante) — vérifie ce qui est réellement envoyé à l'API.
+    client = _FakeClient(["texte quelconque, peu importe ici"])
+    verbaliser_via_llm(FICHE_RICHE, client=client)
+    assert client.messages.kwargs_appels[0]["model"] == "claude-haiku-4-5"
+
+
+@pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY non configurée")
+def test_modele_haiku_existe_reellement_sur_l_api_anthropic():
+    # Vérification la plus forte possible sur le nom de modèle : interroge
+    # directement l'API Models d'Anthropic plutôt que de faire confiance à
+    # une table mise en cache. Si "claude-haiku-4-5" n'existe pas ou plus
+    # côté API, ce test échoue avec l'erreur réelle de l'API (404 ou
+    # équivalent), pas une supposition.
+    from scripts.verbaliser_llm import MODELE_LLM
+    client = anthropic.Anthropic()
+    modele = client.models.retrieve(MODELE_LLM)
+    assert modele.id == MODELE_LLM
 
 
 def test_texte_llm_valide_du_premier_coup_est_retourne_tel_quel():
