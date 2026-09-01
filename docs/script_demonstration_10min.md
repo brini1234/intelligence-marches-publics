@@ -4,7 +4,7 @@ Déroulé minuté pour la soutenance. Toutes les commandes et sorties ci-dessous
 
 **Objectif du sujet (section 7)** : *« démonstration de 10 minutes : acheteur et objet de marché vers un bloc de décision source »*. Deux moments de démo live, un fil conducteur : partir d'un acheteur et d'un objet de marché, arriver à un bloc de décision, montrer qu'il est sourcé et honnête sur ce qu'il ne sait pas.
 
-**Avant de commencer** : dérouler la checklist de `docs/guide_demonstration.md` (PostgreSQL up, `pytest tests/ -q` → 51 passed, 2 skipped, `harnais_evaluation.py` → 10/10). Terminal déjà ouvert dans le dépôt, `venv` déjà activé.
+**Avant de commencer** : dérouler la checklist de `docs/guide_demonstration.md` (PostgreSQL up, `pytest tests/ -q` → 67 passed, 2 skipped, `harnais_evaluation.py` → 10/10). Terminal déjà ouvert dans le dépôt, `venv` déjà activé.
 
 ---
 
@@ -115,7 +115,7 @@ Sortie : `{'siret': '38012986648625', 'siren': '380129866', 'methode': 'investig
 
 **À dire, sans montrer de terminal (gain de temps)** — citer de mémoire ou depuis une slide, tous vérifiés le 31/08/2026 :
 
-- Suite de tests : **51 passed, 2 skipped** (les 2 `skipped` dépendent d'une vraie réponse de DuckDuckGo, niveau 5/agent web — aléa réseau, pas un échec)
+- Suite de tests : **67 passed, 2 skipped** (les 2 `skipped` dépendent d'une vraie réponse de DuckDuckGo, niveau 5/agent web — aléa réseau, pas un échec)
 - Harnais d'évaluation (5 pièges du sujet) : **10/10**
 - Précision de résolution d'identité : **92% global / 100% hors homonymie** — **cible sujet (>90%) atteinte**
 - Précision de détection du sortant : **6/6 (100%)** sur cas connus
@@ -126,11 +126,11 @@ Sortie : `{'siret': '38012986648625', 'siren': '380129866', 'methode': 'investig
 
 ## 8:30 – 9:30 — Limites assumées, pas cachées (1 min)
 
-**À dire** : *« Deux limites documentées, pas découvertes en soutenance : deux sources sur six ne sont pas connectées — BOAMP et Pappers/Infogreffe. Et les sorties structurées prescrites par le sujet — Pydantic, JSON Schema — ne sont pas utilisées ; la cohérence des fiches de faits repose sur le code et les tests, pas sur un schéma déclaratif. Un résidu d'homonymie non résoluble par le nom seul subsiste aussi — ex. 112 entreprises françaises nommées "SMILE" — mais n'empêche plus d'atteindre la cible du sujet sur le chiffre global. »*
+**À dire** : *« Une limite documentée, pas découverte en soutenance : une source sur six n'est pas connectée — Pappers/Infogreffe, API payante sans clé configurée. BOAMP l'est depuis fin août (recoupement/détection), et les sorties structurées prescrites par le sujet — Pydantic, JSON Schema — sont désormais validées systématiquement. Un résidu d'homonymie non résoluble par le nom seul subsiste aussi — ex. 112 entreprises françaises nommées "SMILE" — mais n'empêche plus d'atteindre la cible du sujet sur le chiffre global. »*
 
 ## 9:30 – 10:00 — Conclusion (30s)
 
-**À dire** : *« Sur les 8 semaines du sujet : la base de données, la résolution d'identité (92%, cible du sujet atteinte), la détection du sortant, les 3 agents prévus, la porte anti-hallucination et les 6 métriques de la section 8 sont livrés et mesurés. Ce qui reste est documenté, pas caché — BOAMP/Pappers, et la validation par schéma déclaratif (Pydantic/JSON Schema). »*
+**À dire** : *« Sur les 8 semaines du sujet : la base de données (import complet, filtrage CPV en aval), la résolution d'identité (92%, cible du sujet atteinte), la détection du sortant, les 3 agents prévus, la porte anti-hallucination, les sorties validées par Pydantic/JSON Schema et les 6 métriques de la section 8 sont livrés et mesurés. Ce qui reste est documenté, pas caché — uniquement Pappers/Infogreffe (API payante) et une passerelle LLM générale. »*
 
 ---
 
