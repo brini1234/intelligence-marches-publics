@@ -36,6 +36,35 @@ def test_fiche_contient_les_5_elements_du_bloc_de_decision():
     assert "ponderation_acheteur" in cles
 
 
+def test_verbaliser_gere_concurrents_observes_liste_vide():
+    # Cas non couvert par les données réelles au moment où ce test a été
+    # écrit (fiche construite à la main pour l'isoler à coup sûr) : un
+    # concurrent principal (titulaire_actuel) est trouvé mais
+    # concurrents_observes est une liste vide. Avant correction,
+    # ", ".join([]) produisait une chaîne vide et le texte final contenait
+    # la phrase cassée "Concurrents observés : . ".
+    fiche = {
+        "faits": [
+            {"cle": "titulaire_actuel", "valeur": "ACME SAS", "provenance": "test", "couverture": 1.0},
+            {"cle": "date_dernier_marche", "valeur": "2024-01-01", "provenance": "test", "couverture": 1.0},
+            {"cle": "date_expiration_estimee", "valeur": "2028-01-01", "provenance": "test", "couverture": 1.0},
+            {"cle": "concurrents_observes", "valeur": [], "provenance": "test", "couverture": 1.0},
+            {"cle": "nombre_marches_historique", "valeur": 1, "provenance": "test", "couverture": 1.0},
+            {"cle": "fourchette_prix_min", "valeur": None, "provenance": "test", "couverture": 0.0},
+            {"cle": "fourchette_prix_max", "valeur": None, "provenance": "test", "couverture": 0.0},
+            {"cle": "ponderation_acheteur", "valeur": "non disponible", "provenance": "test", "couverture": 0.0},
+        ],
+        "couverture_globale": 0.5,
+        "raison": None,
+        "marches_support": ["uid_test"],
+    }
+    texte = verbaliser(fiche)
+    assert "Concurrents observés : . " not in texte
+    assert "Aucun concurrent observé dans les données disponibles" in texte
+    resultat = verifier_texte(texte, fiche)
+    assert resultat["valide"] is True
+
+
 def test_verbaliser_gere_famille_sans_aucun_montant_ou_elargie():
     # Cas réel (marché TED sans montant, acheteur 13000208200043, CPV
     # 72267000) : la famille exacte n'a aucun montant publié. Depuis

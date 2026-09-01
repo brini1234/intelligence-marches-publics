@@ -10,7 +10,17 @@ def verbaliser(fiche: dict) -> str:
     couverture = fiche["couverture_globale"]
 
     concurrents = valeurs["concurrents_observes"]
-    concurrents_txt = ", ".join(concurrents) if isinstance(concurrents, list) else concurrents
+    if isinstance(concurrents, list):
+        # Liste vide (concurrent principal trouvé, aucun autre concurrent) :
+        # une clause dédiée, jamais "Concurrents observés : . " (phrase
+        # cassée, ", ".join([]) produisant une chaîne vide).
+        concurrents_clause = (
+            "Concurrents observés : " + ", ".join(concurrents) + "."
+            if concurrents
+            else "Aucun concurrent observé dans les données disponibles."
+        )
+    else:
+        concurrents_clause = f"Concurrents observés : {concurrents}."
 
     # Formulation conforme au sujet (section 2) : jamais "Prix du marché : X EUR"
     # (faux, ponctuel), toujours une fourchette avec taille d'échantillon et la
@@ -28,7 +38,7 @@ def verbaliser(fiche: dict) -> str:
         f"Titulaire actuel probable : {valeurs['titulaire_actuel']} "
         f"(dernier marché notifié le {valeurs['date_dernier_marche']}, "
         f"échéance estimée : {valeurs['date_expiration_estimee']}). "
-        f"Concurrents observés : {concurrents_txt}. "
+        f"{concurrents_clause} "
         f"Fourchette de prix constatée : {fourchette_txt}. "
         f"Pondération de l'acheteur : {valeurs['ponderation_acheteur']}. "
         f"Basé sur {n} marché(s) similaire(s) "
