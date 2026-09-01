@@ -157,7 +157,8 @@ def test_sans_cle_api_replie_gracieusement(monkeypatch):
 
 @pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY non configurée")
 def test_llm_reel_produit_toujours_un_texte_valide_sur_plusieurs_cas():
-    # Le seul test de ce fichier qui appelle réellement claude-opus-5 : un
+    # Le seul test de ce fichier (avec test_modele_haiku_existe_reellement_
+    # sur_l_api_anthropic) qui appelle réellement claude-haiku-4-5 : un
     # modèle qui peut effectivement halluciner, pas une chaîne fabriquée à
     # la main. L'invariant testé n'est pas "le LLM ne se trompe jamais"
     # (il peut), mais "le texte FINAL livré est toujours valide" (grâce à
