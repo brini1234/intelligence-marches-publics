@@ -20,14 +20,28 @@ Ce module ajoute ce cycle sans jamais changer la garantie déjà en place :
        que scripts/agent_enrichissement_web.py, jamais un texte invalide
        livré, jamais un crash.
 
-Modèle : claude-opus-5 par défaut (recommandation par défaut de la
-passerelle Anthropic officielle). effort="low" : tâche volontairement
-simple (reformuler des faits déjà validés selon un gabarit fixe, pas un
-raisonnement ouvert) — cf. shared/cost-optimization.md de la skill
-claude-api, "low pour les tâches simples". Budget/coût réel : mesuré
-séparément par scripts/mesurer_cout_latence_briefing.py une fois le
-rebuild du 01/09/2026 terminé (cf. rapport de stage, section 6, note sur
-la métrique 6).
+Modèle : claude-haiku-4-5 (1 $/5 $ par million de tokens in/out, le moins
+cher de la gamme Claude actuelle — cf. skill claude-api). Choix corrigé le
+01/09/2026 : la première version de ce fichier utilisait claude-opus-5 par
+défaut de la skill claude-api ("ALWAYS use claude-opus-5 unless the user
+explicitly names a different model"), appliqué sans le confronter à la
+tâche réelle — une erreur signalée par l'utilisateur, corrigée ici. La
+tâche confiée au modèle est volontairement étroite et fermée : reformuler
+une fiche de faits DÉJÀ validée selon un gabarit de phrase fixe, sans
+raisonnement, sans recherche, sans décision — exactement le type de tâche
+que le sujet (section 9) qualifie de "budget précisé au démarrage", pas
+un cas justifiant le modèle le plus capable. Pas de paramètre `effort` ici
+: Haiku 4.5 ne le supporte pas (erreur documentée dans la skill claude-api
+pour les modèles antérieurs à la génération 4.6) — le seul levier de coût
+disponible sur ce modèle est le choix du modèle lui-même, déjà fait.
+
+Nuance assumée, pas mesurée : au moment d'écrire ce fichier, aucune
+mesure comparative coût/latence Opus vs Haiku n'existe encore sur ce
+chemin précis (scripts/mesurer_cout_latence_briefing.py sera étendu après
+la fin du rebuild en cours pour logger le coût réel en tokens, cf.
+rapport de stage section 6). Le choix de Haiku ici est donc justifié par
+l'adéquation à la tâche (reformulation contrainte, pas de raisonnement
+ouvert), pas encore par un chiffre coût/latence comparatif réel.
 """
 import json
 import os
@@ -38,7 +52,7 @@ sys.path.append(".")
 from scripts.verbaliser import verbaliser
 from scripts.verification_mecanique import verifier_texte
 
-MODELE_LLM = "claude-opus-5"
+MODELE_LLM = "claude-haiku-4-5"
 MAX_TENTATIVES = 3
 MAX_TOKENS_REPONSE = 1024
 
@@ -112,7 +126,6 @@ def verbaliser_via_llm(fiche: dict, client=None) -> str:
                 model=MODELE_LLM,
                 max_tokens=MAX_TOKENS_REPONSE,
                 system=SYSTEM_PROMPT,
-                output_config={"effort": "low"},
                 messages=messages,
             )
         except (anthropic.APIConnectionError, anthropic.RateLimitError,
