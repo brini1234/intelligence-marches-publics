@@ -27,6 +27,16 @@ SCORES_COUVERTURE = {
 # même si le sortant lui-même reste bien identifié.
 COUVERTURE_MAX_SI_CONCURRENT_ETRANGER = 0.33  # plafonnée à "faible", jamais mieux
 
+# Correctif du 03/09/2026 : depuis que l'axe "acheteurs comparables" de
+# l'agent d'expansion élargit réellement concurrents_observes (cf.
+# historique_elargi ci-dessous), la liste peut atteindre plusieurs dizaines
+# de noms (jusqu'à 80+ constaté en base, périmètre national) — contraire au
+# sujet, section 2 : "bloc de décision ... lisible en 30 secondes". Les N
+# plus fréquents restent affichés (le signal le plus actionnable pour une
+# décision GO/No-Go), le reste compté explicitement plutôt que tronqué
+# silencieusement (même principe que la couverture : jamais masquer un trou).
+MAX_CONCURRENTS_AFFICHES = 10
+
 
 def _valider(fiche: dict) -> dict:
     """
@@ -84,6 +94,7 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
 
     resultat = detecter_sortant(siret_acheteur, code_cpv)
     expansions_appliquees: list[dict] = []
+    historique_elargi: list[dict] = []
 
     # Agent "Expansion pilotée par la couverture" (sujet, section 4 et 6, S6 :
     # scripts/agent_expansion_couverture.py) : déclenché uniquement quand la
@@ -101,6 +112,15 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
 
         resultat = expansion["resultat_sortant"]
         expansions_appliquees = expansion["expansions_appliquees"]
+        # Correctif du 03/09/2026 : l'axe "acheteurs comparables" de l'agent
+        # d'expansion (scripts/agent_expansion_couverture.py) calculait une
+        # liste d'acheteurs comparables mais elle n'était jamais utilisée
+        # jusqu'ici — les concurrents/prix restaient strictement ceux du
+        # seul acheteur d'origine, malgré la documentation ("statistiques de
+        # prix/concurrents élargies"). Récupérée ici et fusionnée ci-dessous
+        # (jamais utilisée pour le sortant lui-même, qui reste résultat["..."]
+        # du seul acheteur d'origine).
+        historique_elargi = expansion.get("historique_elargi", [])
 
     score = SCORES_COUVERTURE.get(resultat["confiance"], 0.0)
 
@@ -111,7 +131,12 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
             "raison": resultat["raison"],
         })
 
-    historique = resultat["historique"]
+    # Fusion avec l'historique des acheteurs comparables (si l'agent
+    # d'expansion en a trouvé, cf. ci-dessus) : élargit uniquement les
+    # statistiques ci-dessous (concurrents, prix), jamais le sortant
+    # (resultat["sortant_probable"]/"siren_sortant" restent ceux du seul
+    # acheteur d'origine, déjà figés avant cette fusion).
+    historique = resultat["historique"] + historique_elargi
 
     # Couverture de l'échéance estimée (sujet section 4 : "estimer la date
     # d'expiration à partir de la date d'attribution et de la durée
@@ -153,15 +178,28 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
         if h.get("etat_administratif") == "ETRANGER":
             hors_france.add(nom)
 
+    # Triés par fréquence décroissante (le signal le plus actionnable pour
+    # une décision GO/No-Go) puis plafonnés à MAX_CONCURRENTS_AFFICHES — cf.
+    # commentaire de la constante. nb_concurrents_hors_france reste compté
+    # sur la liste COMPLÈTE (avant troncature), jamais sous-estimé.
+    noms_tries = sorted(ordre_apparition, key=lambda n: occurrences[n], reverse=True)
+
     concurrents = []
     nb_concurrents_hors_france = 0
-    for nom in ordre_apparition:
+    for nom in noms_tries:
+        if nom in hors_france:
+            nb_concurrents_hors_france += 1
+
+    for nom in noms_tries[:MAX_CONCURRENTS_AFFICHES]:
         frequence = f"{occurrences[nom]}/{total_attributions} attribution(s)"
         if nom in hors_france:
             concurrents.append(f"{nom} [hors France] ({frequence})")
-            nb_concurrents_hors_france += 1
         else:
             concurrents.append(f"{nom} ({frequence})")
+    if len(noms_tries) > MAX_CONCURRENTS_AFFICHES:
+        concurrents.append(
+            f"... et {len(noms_tries) - MAX_CONCURRENTS_AFFICHES} autre(s) concurrent(s) observé(s)"
+        )
 
     # Fourchette de prix observée sur toute la famille de marchés. Aucun
     # montant publié sur toute la famille (ex. marchés TED sans montant
@@ -175,10 +213,25 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
 
     # Couverture du fait "concurrents_observes" : dégradée si au moins un
     # concurrent hors France est présent, car son identité/activité n'a pas
-    # pu être vérifiée via SIRENE (référentiel France uniquement).
-    couverture_concurrents = score if resultat["nb_marches_famille"] > 1 else 0.0
+    # pu être vérifiée via SIRENE (référentiel France uniquement). Le seuil
+    # se base sur total_attributions (post-fusion avec historique_elargi),
+    # pas sur resultat["nb_marches_famille"] seul (qui ne compte que les
+    # marchés du seul acheteur d'origine) : des concurrents apportés par
+    # l'agent d'expansion (acheteurs comparables) sont un signal réel, même
+    # quand l'acheteur d'origine lui-même n'a qu'un seul marché sur ce CPV.
+    couverture_concurrents = score if total_attributions > 1 else 0.0
     if nb_concurrents_hors_france > 0:
         couverture_concurrents = min(couverture_concurrents, COUVERTURE_MAX_SI_CONCURRENT_ETRANGER)
+
+    # Dégradation supplémentaire quand les statistiques proviennent en
+    # partie d'acheteurs comparables plutôt que du seul acheteur d'origine
+    # (même principe que couverture_expiration ci-dessus pour une durée
+    # inférée : une estimation sur un périmètre plus large, moins
+    # spécifique, jamais présentée avec la même certitude qu'une requête
+    # directe sur l'acheteur exact).
+    if historique_elargi:
+        couverture_prix = round(couverture_prix * 0.5, 2)
+        couverture_concurrents = round(couverture_concurrents * 0.5, 2)
 
     faits = [
         {

@@ -1,6 +1,6 @@
 import sys
 sys.path.append(".")
-from scripts.fiche_de_faits import _valider, construire_fiche_de_faits
+from scripts.fiche_de_faits import _valider, construire_fiche_de_faits, MAX_CONCURRENTS_AFFICHES
 from scripts.bloc_de_decision import construire_bloc_de_decision
 
 
@@ -47,3 +47,35 @@ def test_duree_restante_mois_absente_degrade_sa_propre_couverture():
     fait_duree = valeurs["duree_restante_mois"]
     if fait_duree["valeur"] is None:
         assert fait_duree["couverture"] == 0.0
+
+
+def test_acheteurs_comparables_elargissent_reellement_concurrents_et_prix():
+    # Régression (bug trouvé par revue de code indépendante le 03/09/2026) :
+    # l'agent d'expansion (scripts/agent_expansion_couverture.py) calculait
+    # une liste d'acheteurs comparables mais elle n'était jamais utilisée --
+    # concurrents_observes/fourchette_prix restaient strictement ceux du
+    # seul acheteur d'origine, contrairement à ce que le docstring du module
+    # et la documentation affirmaient. Cas réel : ce couple acheteur/CPV n'a
+    # que 22 marchés en propre mais des dizaines de concurrents une fois
+    # les acheteurs comparables (même NAF) fusionnés dans les statistiques.
+    fiche = construire_fiche_de_faits("05781313100026", "72413000")
+    valeurs = {f["cle"]: f for f in fiche["faits"]}
+
+    fait_concurrents = valeurs["concurrents_observes"]
+    # Plafonné à MAX_CONCURRENTS_AFFICHES + 1 ligne de décompte (sujet,
+    # section 2 : bloc de décision lisible en 30 secondes) -- jamais un mur
+    # de dizaines de noms, jamais non plus une troncature silencieuse.
+    assert len(fait_concurrents["valeur"]) == MAX_CONCURRENTS_AFFICHES + 1
+    assert fait_concurrents["valeur"][-1].startswith("... et ")
+
+    # Couverture dégradée (moitié de la couverture normale) car les
+    # statistiques proviennent en partie d'acheteurs comparables, pas
+    # seulement de l'acheteur exact demandé -- jamais présentée avec la
+    # même certitude qu'une requête directe.
+    assert 0.0 < fait_concurrents["couverture"] < 0.33
+    assert 0.0 < valeurs["fourchette_prix_min"]["couverture"] < 0.33
+
+    # Le sortant lui-même reste celui de l'acheteur d'origine uniquement --
+    # jamais influencé par les acheteurs comparables (docstring de
+    # agent_expansion_couverture.py : "jamais le sortant").
+    assert valeurs["titulaire_actuel"]["valeur"] == "HYDRO GEOTECHNIQUE SUD EST (HYDRO-GEO)"

@@ -137,6 +137,45 @@ def _acheteurs_meme_naf(
     return [row[0] for row in lignes]
 
 
+def _historique_acheteurs_comparables(
+    acheteurs_comparables: list[str], code_cpv_effectif: str, connexion
+) -> list[dict]:
+    """
+    Correctif du 03/09/2026 : les axes "acheteurs comparables" /
+    "périmètre géographique" trouvaient bien une liste d'acheteurs
+    comparables et la traçaient dans `expansions_appliquees`, mais cette
+    liste n'était ensuite jamais utilisée pour élargir quoi que ce soit —
+    contrairement à ce que le docstring de ce module et la documentation
+    (README, rapport de stage) affirment explicitement ("statistiques de
+    prix/concurrents élargies"). `fiche_de_faits.py` ne lisait jamais
+    `acheteurs_comparables`, et `resultat["historique"]` provenait
+    exclusivement de `detecter_sortant()` sur le seul acheteur d'origine.
+
+    Cette fonction récupère l'historique des marchés (denomination,
+    montant, etat_administratif) des acheteurs comparables sur le même CPV
+    (préfixe, cohérent avec un éventuel élargissement CPV parent déjà
+    appliqué à `resultat` par l'axe 1) — jamais utilisée pour déterminer le
+    sortant lui-même (aucun champ `uid`/`date_notification` retourné ici,
+    volontairement : cette liste ne doit pouvoir alimenter que les
+    statistiques de prix/concurrents dans fiche_de_faits.py, jamais une
+    logique de sortant qui la lirait par erreur).
+    """
+    if not acheteurs_comparables:
+        return []
+    lignes = connexion.execute(text("""
+        SELECT e.denomination, m.montant, e.etat_administratif
+        FROM marches m
+        JOIN attributions a ON a.uid_marche = m.uid
+        JOIN entreprises e ON e.siren = a.siren_titulaire
+        WHERE m.siret_acheteur = ANY(:acheteurs) AND m.code_cpv LIKE :prefixe
+    """), {"acheteurs": acheteurs_comparables, "prefixe": f"{code_cpv_effectif}%"}).fetchall()
+    return [
+        {"denomination": denomination, "montant": float(montant) if montant is not None else None,
+         "etat_administratif": etat}
+        for denomination, montant, etat in lignes
+    ]
+
+
 def agent_expansion_couverture(siret_acheteur: str, code_cpv: str) -> dict:
     """
     Point d'entrée. Retourne un dict avec un champ "type" :
@@ -167,6 +206,7 @@ def agent_expansion_couverture(siret_acheteur: str, code_cpv: str) -> dict:
         naf_departement = _naf_acheteur(siret_acheteur, connexion)
 
     resultat = detecter_sortant(siret_acheteur, code_cpv)
+    cpv_effectif = code_cpv  # CPV réellement à l'origine de `resultat` — suit l'axe 1 s'il s'applique.
     expansions: list[dict] = []
 
     # Axe 1 : CPV parent — seul axe qui peut changer le sortant retourné.
@@ -190,12 +230,19 @@ def agent_expansion_couverture(siret_acheteur: str, code_cpv: str) -> dict:
             })
             if candidat.get("nb_marches_famille", 0) > resultat.get("nb_marches_famille", 0):
                 resultat = candidat
+                cpv_effectif = prefixe
             if resultat.get("nb_marches_famille", 0) >= SEUIL_COUVERTURE_SUFFISANTE:
                 break
 
-    # Axes 2/3 : acheteurs comparables, département puis national — n'élargissent
-    # que les statistiques de prix/concurrents, jamais le sortant lui-même.
+    # Axes 2/3 : acheteurs comparables, département puis national.
+    # Correctif du 03/09/2026 : la liste trouvée est désormais réellement
+    # utilisée (via historique_elargi ci-dessous), jamais seulement tracée
+    # — cf. docstring de _historique_acheteurs_comparables. N'élargit que
+    # les statistiques de prix/concurrents, jamais le sortant lui-même
+    # (cpv_effectif/acheteurs_comparables n'entrent dans aucun appel à
+    # detecter_sortant()).
     acheteurs_comparables: list[str] = []
+    historique_elargi: list[dict] = []
     if naf_departement is not None:
         naf, departement = naf_departement
         with engine.connect() as connexion:
@@ -215,6 +262,7 @@ def agent_expansion_couverture(siret_acheteur: str, code_cpv: str) -> dict:
                         "valeur": f"{len(acheteurs_comparables)} acheteur(s), NAF {naf}, France entière",
                         "effet": "statistiques de prix/concurrents élargies (jamais le sortant)",
                     })
+            historique_elargi = _historique_acheteurs_comparables(acheteurs_comparables, cpv_effectif, connexion)
 
     # Axe 4 : fenêtre temporelle — structurellement un no-op ici (cf. docstring
     # du module) ; constaté et déclaré, pas simulé.
@@ -242,6 +290,7 @@ def agent_expansion_couverture(siret_acheteur: str, code_cpv: str) -> dict:
         "type": "resultat",
         "resultat_sortant": resultat,
         "acheteurs_comparables": acheteurs_comparables,
+        "historique_elargi": historique_elargi,
         "expansions_appliquees": expansions,
     }
 

@@ -48,6 +48,29 @@ def test_agent_elargit_une_famille_pauvre():
     assert resultat["resultat_sortant"]["nb_marches_famille"] > 1
 
 
+def test_agent_elargit_reellement_les_statistiques_via_acheteurs_comparables():
+    # Régression (bug trouvé par revue de code indépendante le 03/09/2026) :
+    # les axes "acheteurs comparables"/"périmètre géographique" calculaient
+    # une liste d'acheteurs comparables et la traçaient dans
+    # expansions_appliquees, mais cette liste n'était ensuite jamais
+    # utilisée -- contrairement à ce que le docstring du module et la
+    # documentation (README, rapport de stage) affirment ("statistiques de
+    # prix/concurrents élargies"). Cas réel : même acheteur/CPV que
+    # test_agent_elargit_une_famille_pauvre ci-dessus, dont l'axe CPV parent
+    # ne suffit pas seul à couvrir tout le potentiel d'élargissement --
+    # l'agent trouve aussi des acheteurs comparables (même NAF) dont
+    # l'historique doit désormais alimenter historique_elargi.
+    resultat = agent_expansion_couverture("05781313100026", "72413000")
+    assert resultat["type"] == "resultat"
+    assert resultat["acheteurs_comparables"]
+    assert resultat["historique_elargi"]
+    # Jamais utilisé pour le sortant lui-même (docstring du module) :
+    # aucune entrée d'historique_elargi ne porte de date_notification/uid,
+    # qui n'existent que sur les entrées venant de detecter_sortant().
+    for entree in resultat["historique_elargi"]:
+        assert set(entree.keys()) == {"denomination", "montant", "etat_administratif"}
+
+
 def test_agent_ne_plante_pas_sur_acheteur_connu_avec_zero_marche_sur_le_cpv_exact():
     # Régression (bug trouvé par revue de code indépendante le 20/08/2026) :
     # detecter_sortant() ne porte pas la clé "nb_marches_famille" dans son
