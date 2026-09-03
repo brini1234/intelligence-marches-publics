@@ -217,6 +217,25 @@ def detecter_sortant(siret_acheteur: str, code_cpv: str, cpv_en_prefixe: bool = 
         marche_actuel = resultats[0]
         nb_marches_famille = len(marches_par_uid)
 
+        # Correctif du 03/09/2026 : `chaine` est trié par date_notification
+        # croissante, mais uniquement dédupliqué par uid — quand plusieurs
+        # marchés DISTINCTS du même acheteur/CPV partagent exactement la
+        # même date_notification maximale (vérifié en base réelle, jusqu'à
+        # 58 uid à égalité sur un même jour), `chaine[-1]` (tri stable) ne
+        # correspond pas nécessairement au même uid que `marche_actuel`
+        # (tie-break différent : siren_titulaire ASC côté SQL, ordre
+        # d'insertion côté tri Python). Cas réel reproduit : SIRET
+        # 25770538400044/CPV 72212900, marche_actuel notifié le 2023-09-13
+        # avec une durée réelle de 8 mois, mais l'ancien chaine[-1]
+        # pointait vers un autre marché tié à la même date avec une durée
+        # de 9 mois — date_expiration_estimee et duree_source affichés
+        # pour "sortant_probable" décrivaient en réalité un AUTRE marché,
+        # produisant une échéance fausse d'un mois sans que rien ne le
+        # signale. Recherche désormais explicitement l'entrée de `chaine`
+        # dont l'uid correspond à marche_actuel, jamais un "dernier élément"
+        # dont l'identité n'est garantie que si aucune égalité n'existe.
+        derniere_entree = next(c for c in chaine if c["uid"] == marche_actuel["uid"])
+
         if nb_generations == 1:
             confiance = "faible"
         elif ratio_coherence is None:
@@ -227,8 +246,6 @@ def detecter_sortant(siret_acheteur: str, code_cpv: str, cpv_en_prefixe: bool = 
             confiance = "moyenne"
         else:
             confiance = "faible"
-
-        derniere_entree = chaine[-1]
 
         raison = (
             f"{nb_marches_famille} marché(s) sur {nb_generations} vague(s) de notification "

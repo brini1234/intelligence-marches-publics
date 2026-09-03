@@ -15,7 +15,7 @@
 pytest tests/
 ```
 
-Attendu (02/09/2026) : 81 passed, 4 skipped (85 tests collectés). 2 des 4 `skipped` (`tests/test_agent_enrichissement_web.py`) dépendent d'une vraie réponse de DuckDuckGo (recherche web, niveau 5 de résolution d'identité) — ils se déclarent explicitement `skipped` plutôt que `failed` quand DuckDuckGo répond par un défi anti-bot plutôt que des résultats (aléa réseau externe, jamais un échec de logique) ; les 2 autres (`tests/test_verbaliser_llm.py`) nécessitent `ANTHROPIC_API_KEY`, absente par défaut.
+Attendu (03/09/2026) : 82 passed, 4 skipped (86 tests collectés). 2 des 4 `skipped` (`tests/test_agent_enrichissement_web.py`) dépendent d'une vraie réponse de DuckDuckGo (recherche web, niveau 5 de résolution d'identité) — ils se déclarent explicitement `skipped` plutôt que `failed` quand DuckDuckGo répond par un défi anti-bot plutôt que des résultats (aléa réseau externe, jamais un échec de logique) ; les 2 autres (`tests/test_verbaliser_llm.py`) nécessitent `ANTHROPIC_API_KEY`, absente par défaut.
 
 ## Pipeline de données (périmètre CPV 72xxxxxx — services informatiques, France)
 
