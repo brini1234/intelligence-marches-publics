@@ -1,6 +1,6 @@
 # Guide de démonstration — validation jalon mi-parcours (fin S5)
 
-Ce guide sert à préparer et rejouer la présentation en direct. Toutes les commandes ci-dessous ont été exécutées et vérifiées le 31/08/2026, puis revérifiées le 02/09/2026 après la vérification totale du dépôt documentée dans `docs/rapport_de_stage.md` (section 17 — deux bugs réels trouvés et corrigés, dont un crash sur le point d'entrée principal du produit) ; les sorties citées sont réelles, pas des exemples reconstruits.
+Ce guide sert à préparer et rejouer la présentation en direct. Toutes les commandes ci-dessous ont été exécutées et vérifiées le 31/08/2026, puis revérifiées le 02/09/2026 (`docs/rapport_de_stage.md`, section 17) et le 03/09/2026 (sections 18-19 — un bug réel trouvé et corrigé dans `detecter_sortant.py`, qui affectait précisément l'exemple central utilisé dans cette démo, et l'axe « acheteurs comparables » de l'agent d'expansion réellement branché) ; les sorties citées sont réelles, pas des exemples reconstruits.
 
 **Pour la soutenance (sujet, section 7 : « démonstration de 10 minutes »)** : voir `docs/script_demonstration_10min.md` — déroulé minuté minute par minute, à suivre en direct. Ce guide-ci reste la référence technique complète (checklist, Q&A, filet de sécurité) ; l'autre est le script précis à dérouler.
 
@@ -30,10 +30,12 @@ Cette opération ne touche à aucune donnée (juste un fichier de verrou systèm
 ```bash
 # 2. Suite de tests complète (~1 min)
 pytest tests/ -q
-# attendu : 81 passed, 4 skipped (2 skipped dépendent d'une vraie réponse de
-# DuckDuckGo, niveau 5 de résolution d'identité — aléa réseau, pas un échec ;
+# attendu (03/09/2026) : 84 passed, 4 skipped (88 collectés) — 2 skipped
+# dépendent d'une vraie réponse de DuckDuckGo, niveau 5 de résolution
+# d'identité — aléa réseau, pas un échec (peut repasser "85 passed, 3
+# skipped" selon la réponse de DuckDuckGo au moment de l'exécution) ;
 # 2 skipped nécessitent ANTHROPIC_API_KEY, absente par défaut — tests réels
-# de scripts/verbaliser_llm.py, cf. section 17 du rapport de stage)
+# de scripts/verbaliser_llm.py, cf. section 17 du rapport de stage
 
 # 3. Harnais d'évaluation (pièges de démonstration du sujet)
 python scripts/harnais_evaluation.py
@@ -59,20 +61,24 @@ afficher_bloc(lignes)
 "
 ```
 
-Sortie attendue (8 lignes, ≤ 10 imposées par le sujet) :
+Sortie attendue (8 lignes, ≤ 10 imposées par le sujet ; revérifiée le 03/09/2026) :
 
 ```
 ============================================================
 1. Acheteur : COUR DES COMPTES | Objet CPV : 72220000
 2. Sortant probable : GRANT THORNTON (couverture: 100%)
-3. Échéance estimée : 2027-01-21 (dernier marché: 2026-07-21) (couverture: 100%)
-4. Concurrents observés : RSM FRANCE (1/11 attribution(s)), ALTERMES (1/11 attribution(s)), CTF CONSEIL (3/11 attribution(s)), PRICEWATERHOUSECOOPERS ADVISORY (1/11 attribution(s)), ERNST ET YOUNG ADVISORY (EY CONSULTING-EY PARTHENON-EY FABERNOVEL) (2/11 attribution(s)) (couverture: 100%)
+3. Échéance estimée : 2026-12-21 (dernier marché: 2026-07-21) (couverture: 100%)
+4. Concurrents observés : CTF CONSEIL (3/11 attribution(s)), ERNST ET YOUNG ADVISORY (EY CONSULTING-EY PARTHENON-EY FABERNOVEL) (2/11 attribution(s)), RSM FRANCE (1/11 attribution(s)), ALTERMES (1/11 attribution(s)), PRICEWATERHOUSECOOPERS ADVISORY (1/11 attribution(s)) (couverture: 100%)
 5. Fourchette de prix : 41,864 € — 95,840 € (n=11, indicatif) (couverture: 100%)
 6. Pondération de l'acheteur : non disponible (couverture: 0%)
 7. Historique : 11 marché(s) similaire(s) observé(s)
 8. COUVERTURE GLOBALE : 89%
 ============================================================
 ```
+
+**Deux changements par rapport à une version antérieure de ce guide, tous deux attendus, pas des régressions** :
+- Ligne 3 (échéance) : `2027-01-21` → `2026-12-21`. Ce couple acheteur/CPV a 3 marchés tiés exactement sur la même `date_notification` (2026-07-21, durées 6/9/5 mois) — cas réel qui a servi à découvrir et corriger le bug documenté en section 18 du rapport de stage (`detecter_sortant.py`, l'échéance provenait parfois d'un marché différent du sortant retourné). `2026-12-21` = 2026-07-21 + 5 mois, la durée réelle du marché du sortant retourné ; `2027-01-21` (ancienne valeur) provenait à tort du marché tié à 6 mois.
+- Ligne 4 (concurrents) : triés par fréquence décroissante depuis le correctif de la section 19 du rapport (CTF CONSEIL, le plus fréquent, apparaît en premier), plutôt que par ordre d'apparition — même liste, ordre différent.
 
 Points à commenter en le montrant :
 - ligne 5 : jamais "prix du marché : X €", toujours une fourchette + n + "indicatif" (vocabulaire imposé, sujet section 2) ;
