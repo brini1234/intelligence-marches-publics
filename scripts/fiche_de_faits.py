@@ -36,13 +36,25 @@ def _valider(fiche: dict) -> dict:
     scripts.schemas.FicheDeFaits avant d'être renvoyée à l'appelant — une
     valeur de type inattendu, une couverture hors [0,1] ou une provenance
     vide lève une erreur de validation ici, immédiatement, plutôt que de se
-    propager silencieusement jusqu'au texte verbalisé. model_dump(mode=
-    "json", exclude_none=True) : round-trip fidèle (Decimal -> nombre JSON)
-    sans introduire de clés absentes ("raison"/"marches_support") que
-    l'ancien code ne produisait pas non plus dans chaque branche — tous les
-    appelants existants y accèdent déjà défensivement via .get(...).
+    propager silencieusement jusqu'au texte verbalisé.
+
+    Correctif du 02/09/2026 : `exclude_none=True` sur le dump global
+    supprimait aussi la clé "valeur" de tout `Fait` dont la valeur est
+    légitimement `None` (ex. `fourchette_prix_min`/`max` sans montant
+    publié sur la famille) — pas seulement "raison"/"marches_support" au
+    niveau racine. `scripts/bloc_de_decision.py` accède à
+    `valeurs["fourchette_prix_min"]["valeur"]` sans `.get()` : la clé
+    manquante levait un `KeyError` en production sur tout acheteur/CPV
+    réel sans aucun montant publié (cas vérifié en base, ex.
+    siret_acheteur="26750004902888", code_cpv="72250000") — un plantage du
+    point d'entrée principal du produit. `exclude_none` ne s'applique donc
+    plus qu'aux deux champs racine réellement optionnels.
     """
-    return FicheDeFaits(**fiche).model_dump(mode="json", exclude_none=True)
+    dump = FicheDeFaits(**fiche).model_dump(mode="json")
+    for cle in ("raison", "marches_support"):
+        if dump.get(cle) is None:
+            dump.pop(cle, None)
+    return dump
 
 
 def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
@@ -179,7 +191,13 @@ def construire_fiche_de_faits(siret_acheteur: str, code_cpv: str) -> dict:
             "cle": "duree_restante_mois",
             "valeur": resultat["duree_restante_mois"],
             "provenance": "table marches, champ duree_restante_mois (source DECP)",
-            "couverture": score,
+            # Champ absent par construction pour tout marché TED (jamais
+            # publié à ce niveau, cf. README) : couverture nulle plutôt que
+            # `score`, même principe que couverture_expiration ci-dessous —
+            # sinon un fait sans valeur gonflerait couverture_globale
+            # (moyenne des couvertures) sans qu'aucune section affichée ne
+            # le laisse deviner. Correctif du 02/09/2026.
+            "couverture": score if resultat.get("duree_restante_mois") is not None else 0.0,
         },
         {
             "cle": "date_expiration_estimee",

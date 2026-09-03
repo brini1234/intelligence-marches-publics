@@ -1,6 +1,6 @@
 # Guide de démonstration — validation jalon mi-parcours (fin S5)
 
-Ce guide sert à préparer et rejouer la présentation en direct. Toutes les commandes ci-dessous ont été exécutées et vérifiées le 31/08/2026 ; les sorties citées sont réelles, pas des exemples reconstruits.
+Ce guide sert à préparer et rejouer la présentation en direct. Toutes les commandes ci-dessous ont été exécutées et vérifiées le 31/08/2026, puis revérifiées le 02/09/2026 après la vérification totale du dépôt documentée dans `docs/rapport_de_stage.md` (section 17 — deux bugs réels trouvés et corrigés, dont un crash sur le point d'entrée principal du produit) ; les sorties citées sont réelles, pas des exemples reconstruits.
 
 **Pour la soutenance (sujet, section 7 : « démonstration de 10 minutes »)** : voir `docs/script_demonstration_10min.md` — déroulé minuté minute par minute, à suivre en direct. Ce guide-ci reste la référence technique complète (checklist, Q&A, filet de sécurité) ; l'autre est le script précis à dérouler.
 
@@ -30,8 +30,10 @@ Cette opération ne touche à aucune donnée (juste un fichier de verrou systèm
 ```bash
 # 2. Suite de tests complète (~1 min)
 pytest tests/ -q
-# attendu : 67 passed, 2 skipped (les 2 skipped dépendent d'une vraie réponse
-# de DuckDuckGo, niveau 5 de résolution d'identité — aléa réseau, pas un échec)
+# attendu : 81 passed, 4 skipped (2 skipped dépendent d'une vraie réponse de
+# DuckDuckGo, niveau 5 de résolution d'identité — aléa réseau, pas un échec ;
+# 2 skipped nécessitent ANTHROPIC_API_KEY, absente par défaut — tests réels
+# de scripts/verbaliser_llm.py, cf. section 17 du rapport de stage)
 
 # 3. Harnais d'évaluation (pièges de démonstration du sujet)
 python scripts/harnais_evaluation.py
@@ -152,6 +154,6 @@ Résultat vérifié : `{'siret': '38012986600...', 'siren': '380129866', 'method
 | Le sortant est-il fiable ? | Confiance calculée (aucune/faible/moyenne/élevée) selon le nombre de vagues de marchés ET leur cohérence temporelle, jamais juste le volume. | `scripts/detecter_sortant.py` |
 | Que se passe-t-il si l'acheteur n'a aucun historique ? | `DONNÉES INSUFFISANTES`, jamais un sortant inventé — testé dans le harnais. | `python scripts/harnais_evaluation.py` |
 | Et les filiales ? | Non modélisées volontairement (aucun dataset de structure de groupe chargé) ; documenté comme limite assumée plutôt que simulé par heuristique non fiable. | `scripts/graphe_concurrentiel.py`, docstring |
-| Qu'est-ce qui reste à faire ? | Les 3 agents S6 sont désormais implémentés, BOAMP est connecté, Pydantic/JSON Schema sont utilisés. Reste hors périmètre : Pappers/Infogreffe (1 des 6 sources du sujet, API payante) et une passerelle LLM générale. | `docs/rapport_de_stage.md`, sections 8, 15 et 16 |
-| Précision du sortant et coût/latence sont-ils mesurés ? | Oui : 6/6 (100%) sur le SIREN du sortant (1 cas exclu et documenté, structurellement indécidable) ; coût 0,00 EUR par briefing (aucune passerelle LLM), latence médiane ~31-34 ms sur un cas riche/ambigu, ~152 ms sur un cas qui déclenche réellement l'agent d'expansion. | `python scripts/mesurer_precision_sortant.py` et `python scripts/mesurer_cout_latence_briefing.py` |
+| Qu'est-ce qui reste à faire ? | Les 3 agents S6 sont désormais implémentés, BOAMP est connecté, Pydantic/JSON Schema sont utilisés, et une verbalisation par LLM existe (`scripts/verbaliser_llm.py`, `claude-haiku-4-5`, cf. section 17 du rapport) — pas encore branchée par défaut sur le bloc de décision. Reste hors périmètre : Pappers/Infogreffe (1 des 6 sources du sujet, API payante), seul écart réel restant. | `docs/rapport_de_stage.md`, sections 8, 15, 16 et 17 |
+| Précision du sortant et coût/latence sont-ils mesurés ? | Oui : 6/6 (100%) sur le SIREN du sortant (1 cas exclu et documenté, structurellement indécidable) ; coût 0,00 EUR par briefing (`construire_bloc_de_decision()` n'invoque aucun LLM), latence médiane ~31-34 ms sur un cas riche/ambigu, ~152 ms sur un cas qui déclenche réellement l'agent d'expansion. | `python scripts/mesurer_precision_sortant.py` et `python scripts/mesurer_cout_latence_briefing.py` |
 | L'agent d'enrichissement web est-il fiable ? | Implémenté (niveau 5, dernier recours), mais réseau-dépendant par nature : le connecteur scrape l'interface HTML de DuckDuckGo (aucune API gratuite stable n'existe pour cet usage), qui peut répondre par un défi anti-bot plutôt que des résultats. Dégradation gracieuse vérifiée : le briefing reste valide, simplement sans ce candidat. | `scripts/agent_enrichissement_web.py`, `connectors/web_ouvert.py` |

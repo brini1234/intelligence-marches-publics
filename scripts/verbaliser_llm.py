@@ -129,7 +129,7 @@ def verbaliser_via_llm(fiche: dict, client=None) -> str:
                 messages=messages,
             )
         except (anthropic.APIConnectionError, anthropic.RateLimitError,
-                anthropic.APIStatusError, anthropic.AuthenticationError) as e:
+                anthropic.APIStatusError, anthropic.AuthenticationError):
             # Réseau, quota, ou clé invalide : jamais un crash côté briefing,
             # même repli que si aucune clé n'était configurée.
             return verbaliser(fiche)
@@ -143,13 +143,15 @@ def verbaliser_via_llm(fiche: dict, client=None) -> str:
             return texte
 
         # Invalide : on régénère en signalant explicitement ce qui a été
-        # rejeté, jamais un deuxième essai à l'aveugle.
+        # rejeté (nombres ET noms d'entreprise), jamais un deuxième essai à
+        # l'aveugle.
         messages.append({"role": "assistant", "content": texte})
         messages.append({"role": "user", "content": (
             "Ce texte contient des valeurs absentes de la fiche de faits : "
-            f"{resultat['nombres_non_justifies']}. Régénère la phrase en "
-            "respectant strictement le gabarit et uniquement les valeurs de "
-            "la fiche fournie plus haut."
+            f"nombres {resultat['nombres_non_justifies']}, "
+            f"noms d'entreprise {resultat['noms_non_justifies']}. Régénère "
+            "la phrase en respectant strictement le gabarit et uniquement "
+            "les valeurs de la fiche fournie plus haut."
         )})
 
     # MAX_TENTATIVES épuisées sans texte valide : repli déterministe,

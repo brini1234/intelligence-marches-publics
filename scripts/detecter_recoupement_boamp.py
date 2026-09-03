@@ -19,7 +19,7 @@ Usage (après scripts/charger_cache_boamp.py) :
 """
 import json
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 sys.path.append(".")
 

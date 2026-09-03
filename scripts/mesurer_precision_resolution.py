@@ -107,7 +107,7 @@ def mesurer_precision():
         print(f"Niveau 3 (rapprochement flou, probabiliste) : {corrects_n3}/{total_n3} "
               f"({corrects_n3 / total_n3:.0%})")
     print(f"Précision globale : {nb_total_correct}/{len(evaluations)} ({precision_globale:.0%})")
-    print(f"Cible du sujet (section 8, France) : > 90%")
+    print("Cible du sujet (section 8, France) : > 90%")
 
     # Les cas 'ambigu' (homonymie réelle : plusieurs entreprises françaises
     # partagent exactement la même dénomination) restent, même avec le

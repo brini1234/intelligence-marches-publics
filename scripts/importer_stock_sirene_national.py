@@ -132,7 +132,7 @@ def importer_stock_sirene_national():
 
             _creer_table(connexion_brute, table, colonnes)
 
-            print(f"  Chargement COPY en cours (peut prendre plusieurs minutes) ...")
+            print("  Chargement COPY en cours (peut prendre plusieurs minutes) ...")
             nb_lignes = _copier_csv(connexion_brute, table, chemin_csv)
             print(f"  {nb_lignes:,} lignes chargées".replace(",", " "))
 

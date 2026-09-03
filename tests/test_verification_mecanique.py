@@ -20,6 +20,27 @@ def test_texte_avec_chiffre_invente_est_rejete():
     assert "999999999" in resultat["nombres_non_justifies"]
 
 
+def test_texte_avec_nom_entreprise_invente_est_rejete():
+    # Bug trouvé en revue (02/09/2026) : verifier_texte() ne contrôlait que
+    # les nombres, jamais les noms d'entreprise, alors que le sujet
+    # (section 4) exige les deux — un LLM aurait pu inventer un nom de
+    # concurrent plausible sans jamais être rejeté par la porte mécanique.
+    fiche = {
+        "faits": [
+            {"cle": "titulaire_actuel", "valeur": "ACME SAS", "provenance": "test", "couverture": 1.0},
+            {"cle": "concurrents_observes", "valeur": ["ORANGE"], "provenance": "test", "couverture": 1.0},
+        ],
+        "couverture_globale": 1.0,
+        "raison": None,
+        "marches_support": ["uid_test"],
+    }
+    texte_invente = "Concurrents observés : ORANGE, GLOBEX CORPORATION."
+    resultat = verifier_texte(texte_invente, fiche)
+    assert resultat["valide"] is False
+    assert "GLOBEX CORPORATION" in resultat["noms_non_justifies"]
+    assert "ORANGE" not in resultat["noms_non_justifies"]
+
+
 def test_verbaliser_gere_absence_de_donnees():
     fiche = construire_fiche_de_faits("00000000000000", "99999999")
     texte = verbaliser(fiche)

@@ -1,10 +1,10 @@
 # Script de démonstration — 10 minutes (sujet, section 7)
 
-Déroulé minuté pour la soutenance. Toutes les commandes et sorties ci-dessous ont été ré-exécutées et vérifiées le 31/08/2026 — pas des exemples reconstruits. Complément du guide plus large (`docs/guide_demonstration.md`, checklist avant-présentation, Q&A, filet de sécurité) : ce document-ci est le script à suivre minute par minute, lui reste la référence technique complète.
+Déroulé minuté pour la soutenance. Toutes les commandes et sorties ci-dessous ont été ré-exécutées et vérifiées le 31/08/2026, puis revérifiées le 02/09/2026 (`docs/rapport_de_stage.md`, section 17) — pas des exemples reconstruits. Complément du guide plus large (`docs/guide_demonstration.md`, checklist avant-présentation, Q&A, filet de sécurité) : ce document-ci est le script à suivre minute par minute, lui reste la référence technique complète.
 
 **Objectif du sujet (section 7)** : *« démonstration de 10 minutes : acheteur et objet de marché vers un bloc de décision source »*. Deux moments de démo live, un fil conducteur : partir d'un acheteur et d'un objet de marché, arriver à un bloc de décision, montrer qu'il est sourcé et honnête sur ce qu'il ne sait pas.
 
-**Avant de commencer** : dérouler la checklist de `docs/guide_demonstration.md` (PostgreSQL up, `pytest tests/ -q` → 67 passed, 2 skipped, `harnais_evaluation.py` → 10/10). Terminal déjà ouvert dans le dépôt, `venv` déjà activé.
+**Avant de commencer** : dérouler la checklist de `docs/guide_demonstration.md` (PostgreSQL up, `pytest tests/ -q` → 81 passed, 4 skipped, `harnais_evaluation.py` → 10/10). Terminal déjà ouvert dans le dépôt, `venv` déjà activé.
 
 ---
 
@@ -22,7 +22,7 @@ Pas de terminal ici — uniquement le message.
 
 ## 1:30 – 2:30 — Architecture en 3 principes (60s)
 
-**À dire** : *« Trois principes : les faits sont calculés, jamais générés — tous les chiffres viennent de requêtes SQL, un modèle de langage se contenterait de les mettre en mots (pas branché ici, pas de passerelle LLM configurée). Cœur déterministe, périphérie agentique — les trois agents prévus par le sujet sont implémentés, uniquement là où l'espace de recherche est réellement ouvert. Et la couverture est un citoyen de première classe — chaque section du briefing affiche son taux de complétude, jamais un 100% de façade. »*
+**À dire** : *« Trois principes : les faits sont calculés, jamais générés — tous les chiffres viennent de requêtes SQL, un modèle de langage se contente de les mettre en mots. Le bloc de décision que je vais montrer ne passe par aucun LLM — coût zéro, latence de quelques millisecondes ; une verbalisation par LLM existe par ailleurs pour un futur rapport détaillé en prose, avec sa propre porte de vérification anti-hallucination. Cœur déterministe, périphérie agentique — les trois agents prévus par le sujet sont implémentés, uniquement là où l'espace de recherche est réellement ouvert. Et la couverture est un citoyen de première classe — chaque section du briefing affiche son taux de complétude, jamais un 100% de façade. »*
 
 Optionnel : montrer rapidement le schéma bronze/silver/gold du README si un support visuel est disponible.
 
@@ -113,13 +113,13 @@ Sortie : `{'siret': '38012986648625', 'siren': '380129866', 'methode': 'investig
 
 ## 7:00 – 8:30 — Les chiffres mesurés (1 min 30)
 
-**À dire, sans montrer de terminal (gain de temps)** — citer de mémoire ou depuis une slide, tous vérifiés le 31/08/2026 :
+**À dire, sans montrer de terminal (gain de temps)** — citer de mémoire ou depuis une slide, vérifiés le 31/08/2026 et revérifiés le 02/09/2026 (`docs/rapport_de_stage.md`, section 17) :
 
-- Suite de tests : **67 passed, 2 skipped** (les 2 `skipped` dépendent d'une vraie réponse de DuckDuckGo, niveau 5/agent web — aléa réseau, pas un échec)
+- Suite de tests : **81 passed, 4 skipped** (2 `skipped` dépendent d'une vraie réponse de DuckDuckGo, niveau 5/agent web — aléa réseau, pas un échec ; 2 `skipped` nécessitent une clé Anthropic absente par défaut)
 - Harnais d'évaluation (5 pièges du sujet) : **10/10**
 - Précision de résolution d'identité : **92% global / 100% hors homonymie** — **cible sujet (>90%) atteinte**
 - Précision de détection du sortant : **6/6 (100%)** sur cas connus
-- Coût par briefing : **0,00 €** (aucune passerelle LLM configurée) — latence **30-155 ms** selon le cas
+- Coût par briefing : **0,00 €** (le bloc de décision n'invoque aucun LLM) — latence **30-155 ms** selon le cas
 - Contrôle référentiel SIRENE : **8/8**
 
 *(Si le temps le permet, une seule commande pour appuyer : `python scripts/harnais_evaluation.py` → 10/10 en ~5 secondes.)*
@@ -130,7 +130,7 @@ Sortie : `{'siret': '38012986648625', 'siren': '380129866', 'methode': 'investig
 
 ## 9:30 – 10:00 — Conclusion (30s)
 
-**À dire** : *« Sur les 8 semaines du sujet : la base de données (import complet, filtrage CPV en aval), la résolution d'identité (92%, cible du sujet atteinte), la détection du sortant, les 3 agents prévus, la porte anti-hallucination, les sorties validées par Pydantic/JSON Schema et les 6 métriques de la section 8 sont livrés et mesurés. Ce qui reste est documenté, pas caché — uniquement Pappers/Infogreffe (API payante) et une passerelle LLM générale. »*
+**À dire** : *« Sur les 8 semaines du sujet : la base de données (import complet, filtrage CPV en aval), la résolution d'identité (92%, cible du sujet atteinte), la détection du sortant, les 3 agents prévus, la porte anti-hallucination, les sorties validées par Pydantic/JSON Schema, une verbalisation par LLM disponible, et les 6 métriques de la section 8 sont livrés et mesurés. Ce qui reste est documenté, pas caché — uniquement Pappers/Infogreffe, API payante sans clé configurée. »*
 
 ---
 

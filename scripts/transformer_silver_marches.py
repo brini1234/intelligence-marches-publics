@@ -323,7 +323,7 @@ def transformer_silver_marches():
             SELECT methode_resolution, COUNT(*) FROM silver_attributions GROUP BY 1 ORDER BY 2 DESC
         """)).fetchall()
 
-    print(f"\n✅ Transformation silver terminée.")
+    print("\n✅ Transformation silver terminée.")
     print(f"  silver_marches : {nb_total} ligne(s) ({nb_decp} DECP, {nb_ted} TED), "
           f"{nb_uid_distincts} uid distinct(s)")
     print(f"  silver_attributions : {nb_attributions} couple(s) marché/titulaire distinct(s)")

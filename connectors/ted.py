@@ -39,7 +39,6 @@ Vérifié en conditions réelles le 2026-08-03 (comme le préconise le sujet S1,
       nécessaire, contrairement à DECP dont le volume se compte en
       millions de lignes).
 """
-import os
 from datetime import date, timedelta
 
 import requests

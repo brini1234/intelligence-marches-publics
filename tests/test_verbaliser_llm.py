@@ -124,6 +124,19 @@ def test_texte_invalide_puis_valide_declenche_bien_une_regeneration():
     assert verifier_texte(texte, FICHE_RICHE)["valide"] is True
 
 
+def test_texte_avec_concurrent_invente_declenche_bien_une_regeneration():
+    # Même mécanisme que test_texte_invalide_puis_valide_declenche_bien_une_regeneration,
+    # mais sur un nom d'entreprise halluciné plutôt qu'un montant — couvre
+    # le correctif du 02/09/2026 de scripts/verification_mecanique.py.
+    texte_invente = "Titulaire actuel probable : ACME SAS. Concurrents observés : ORANGE, GLOBEX CORPORATION."
+    texte_correct = "Titulaire actuel probable : ACME SAS (dernier marché notifié le 2024-01-01, échéance estimée : 2028-01-01). Concurrents observés : ORANGE, BOUYGUES. Fourchette de prix constatée : 100000 € à 200000 € (n=3, indicatif). Pondération de l'acheteur : non disponible. Basé sur 3 marché(s) similaire(s) (couverture globale : 80%)."
+    client = _FakeClient([texte_invente, texte_correct])
+    texte = verbaliser_via_llm(FICHE_RICHE, client=client)
+    assert texte == texte_correct
+    assert client.messages.appels == 2
+    assert verifier_texte(texte, FICHE_RICHE)["valide"] is True
+
+
 def test_echec_repete_replie_sur_le_gabarit_deterministe():
     # Le "LLM" hallucine à chaque tentative -> après MAX_TENTATIVES essais,
     # repli sur verbaliser() (déterministe), jamais un texte non vérifié
