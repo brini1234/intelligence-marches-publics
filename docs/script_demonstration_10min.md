@@ -1,6 +1,6 @@
 # Script de démonstration — 10 minutes (sujet, section 7)
 
-Déroulé minuté pour la soutenance. Toutes les commandes et sorties ci-dessous ont été ré-exécutées et vérifiées le 31/08/2026, puis revérifiées le 02/09/2026 (`docs/rapport_de_stage.md`, section 17) et le 03/09/2026 (sections 18-19 — un bug réel trouvé et corrigé dans `detecter_sortant.py`, qui affectait précisément l'exemple central ci-dessous) — pas des exemples reconstruits. Complément du guide plus large (`docs/guide_demonstration.md`, checklist avant-présentation, Q&A, filet de sécurité) : ce document-ci est le script à suivre minute par minute, lui reste la référence technique complète.
+Déroulé minuté pour la soutenance. Toutes les commandes et sorties ci-dessous ont été ré-exécutées et vérifiées le 31/08/2026, puis revérifiées le 02/09/2026 (`docs/rapport_de_stage.md`, section 17), le 03/09/2026 (sections 18-19 — un bug réel trouvé et corrigé dans `detecter_sortant.py`, qui affectait précisément l'exemple central ci-dessous), et le 16-17/09/2026 (section 20 — migration Windows, reconstruction complète du pipeline, dérive gold trouvée et corrigée ; les trois sorties live ci-dessous ont été rejouées telles quelles contre la base reconstruite et sont **identiques**, seule la latence mesurée en section « chiffres mesurés » a changé avec le volume de données) — pas des exemples reconstruits. Complément du guide plus large (`docs/guide_demonstration.md`, checklist avant-présentation, Q&A, filet de sécurité) : ce document-ci est le script à suivre minute par minute, lui reste la référence technique complète.
 
 **Objectif du sujet (section 7)** : *« démonstration de 10 minutes : acheteur et objet de marché vers un bloc de décision source »*. Deux moments de démo live, un fil conducteur : partir d'un acheteur et d'un objet de marché, arriver à un bloc de décision, montrer qu'il est sourcé et honnête sur ce qu'il ne sait pas.
 
@@ -115,13 +115,13 @@ Sortie : `{'siret': '38012986648625', 'siren': '380129866', 'methode': 'investig
 
 ## 7:00 – 8:30 — Les chiffres mesurés (1 min 30)
 
-**À dire, sans montrer de terminal (gain de temps)** — citer de mémoire ou depuis une slide, vérifiés le 31/08/2026 et revérifiés le 02/09/2026 (`docs/rapport_de_stage.md`, section 17) :
+**À dire, sans montrer de terminal (gain de temps)** — citer de mémoire ou depuis une slide, vérifiés le 31/08/2026, revérifiés le 02/09/2026 (`docs/rapport_de_stage.md`, section 17) et le 16-17/09/2026 (section 20, après reconstruction complète du pipeline sur la nouvelle machine) :
 
 - Suite de tests : **84 passed, 4 skipped** (88 collectés ; 2 `skipped` dépendent d'une vraie réponse de DuckDuckGo, niveau 5/agent web — aléa réseau, pas un échec ; 2 `skipped` nécessitent une clé Anthropic absente par défaut)
 - Harnais d'évaluation (5 pièges du sujet) : **10/10**
 - Précision de résolution d'identité : **92% global / 100% hors homonymie** — **cible sujet (>90%) atteinte**
 - Précision de détection du sortant : **6/6 (100%)** sur cas connus
-- Coût par briefing : **0,00 €** (le bloc de décision n'invoque aucun LLM) — latence **30-155 ms** selon le cas
+- Coût par briefing : **0,00 €** (le bloc de décision n'invoque aucun LLM) — latence **63-303 ms** selon le cas (plage plus large qu'avant : le volume de données a nettement augmenté depuis l'aboutissement de l'import complet, cf. rapport section 20)
 - Contrôle référentiel SIRENE : **8/8**
 
 *(Si le temps le permet, une seule commande pour appuyer : `python scripts/harnais_evaluation.py` → 10/10 en ~5 secondes.)*

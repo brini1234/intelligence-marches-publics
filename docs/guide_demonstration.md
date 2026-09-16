@@ -6,26 +6,20 @@ Ce guide sert à préparer et rejouer la présentation en direct. Toutes les com
 
 ## Avant la présentation (à faire la veille ou le matin même)
 
-```bash
-cd /Users/chaimabrini/intelligence-marches-publics
-source venv/bin/activate
-
-# 1. PostgreSQL doit tourner. En cas de doute :
-brew services list | grep postgres
-pg_isready
-```
-
-**Si `pg_isready` répond "no response"** (déjà arrivé deux fois sur cette machine — fichier de verrou périmé) :
+**Machine Windows depuis le 16-17/09/2026** (migration documentée au rapport de stage, section 20) : PostgreSQL 16 est une installation portable, pas un service géré par `brew`. La checklist ci-dessous reflète cet environnement ; les commandes `brew`/`pg_isready` des vérifications antérieures (31/08-03/09/2026, sur Mac) ne s'appliquent plus telles quelles sur cette machine.
 
 ```bash
-brew services stop postgresql@16
-rm -f /usr/local/var/postgresql@16/postmaster.pid
-brew services start postgresql@16
-sleep 3
-pg_isready   # doit répondre "accepting connections"
+cd "C:\Users\USER\Desktop\intelligence-marches-publics\intelligence-marches-publics"
+venv/Scripts/python.exe -c "import psycopg2; psycopg2.connect('postgresql://stage_user:chaima777@localhost:5432/marches_publics', connect_timeout=5); print('OK')"
 ```
 
-Cette opération ne touche à aucune donnée (juste un fichier de verrou système).
+**Si la connexion échoue** (serveur arrêté — cette installation portable n'est pas un service qui démarre seul au boot, contrairement à `brew services` sur Mac) :
+
+```bash
+"C:\Users\USER\pgsql16\extracted\pgsql\bin\pg_ctl.exe" start -D "C:\Users\USER\pgsql16\data" -l "C:\Users\USER\pgsql16\logfile_demo.log" -w -t 60
+```
+
+Cette opération ne touche à aucune donnée ; en cas d'arrêt non propre précédent (redémarrage de la machine, coupure), PostgreSQL rejoue automatiquement ses journaux WAL au démarrage (quelques secondes, déjà observé sans perte de données sur cette machine).
 
 ```bash
 # 2. Suite de tests complète (~1 min)
@@ -161,5 +155,5 @@ Résultat vérifié : `{'siret': '38012986600...', 'siren': '380129866', 'method
 | Que se passe-t-il si l'acheteur n'a aucun historique ? | `DONNÉES INSUFFISANTES`, jamais un sortant inventé — testé dans le harnais. | `python scripts/harnais_evaluation.py` |
 | Et les filiales ? | Non modélisées volontairement (aucun dataset de structure de groupe chargé) ; documenté comme limite assumée plutôt que simulé par heuristique non fiable. | `scripts/graphe_concurrentiel.py`, docstring |
 | Qu'est-ce qui reste à faire ? | Les 3 agents S6 sont désormais implémentés, BOAMP est connecté, Pydantic/JSON Schema sont utilisés, et une verbalisation par LLM existe (`scripts/verbaliser_llm.py`, `claude-haiku-4-5`, cf. section 17 du rapport) — pas encore branchée par défaut sur le bloc de décision. Reste hors périmètre : Pappers/Infogreffe (1 des 6 sources du sujet, API payante), seul écart réel restant. | `docs/rapport_de_stage.md`, sections 8, 15, 16 et 17 |
-| Précision du sortant et coût/latence sont-ils mesurés ? | Oui : 6/6 (100%) sur le SIREN du sortant (1 cas exclu et documenté, structurellement indécidable) ; coût 0,00 EUR par briefing (`construire_bloc_de_decision()` n'invoque aucun LLM), latence médiane ~31-34 ms sur un cas riche/ambigu, ~152 ms sur un cas qui déclenche réellement l'agent d'expansion. | `python scripts/mesurer_precision_sortant.py` et `python scripts/mesurer_cout_latence_briefing.py` |
+| Précision du sortant et coût/latence sont-ils mesurés ? | Oui : 6/6 (100%) sur le SIREN du sortant (1 cas exclu et documenté, structurellement indécidable) ; coût 0,00 EUR par briefing (`construire_bloc_de_decision()` n'invoque aucun LLM), latence médiane ~63-97 ms sur un cas riche/ambigu/sans données, ~303 ms sur un cas qui déclenche réellement l'agent d'expansion (plage revue à la hausse le 16-17/09/2026, volume de données nettement supérieur depuis l'import complet réellement abouti — cf. rapport de stage, section 20). | `python scripts/mesurer_precision_sortant.py` et `python scripts/mesurer_cout_latence_briefing.py` |
 | L'agent d'enrichissement web est-il fiable ? | Implémenté (niveau 5, dernier recours), mais réseau-dépendant par nature : le connecteur scrape l'interface HTML de DuckDuckGo (aucune API gratuite stable n'existe pour cet usage), qui peut répondre par un défi anti-bot plutôt que des résultats. Dégradation gracieuse vérifiée : le briefing reste valide, simplement sans ce candidat. | `scripts/agent_enrichissement_web.py`, `connectors/web_ouvert.py` |
