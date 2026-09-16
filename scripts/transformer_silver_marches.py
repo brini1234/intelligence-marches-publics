@@ -41,6 +41,15 @@ from sqlalchemy import text
 from db.connection import get_engine
 from scripts.resolution_identite import resoudre
 
+# Périmètre métier du produit (sujet, section 6 : "services informatiques,
+# CPV 72xxxxxx"), même constante que scripts/construire_gold_marches.py.
+# Utilisée ici UNIQUEMENT pour borner le coût des niveaux 2/3 (ci-dessous),
+# jamais pour filtrer les données elles-mêmes : silver_marches/silver_
+# attributions restent peuplées pour tout le périmètre France/3 ans, tous
+# secteurs (bronze -> silver plus haut dans ce fichier, sans aucun filtre
+# CPV) -- c'est en gold, et uniquement là, que le filtre exclut des lignes.
+PREFIXE_CPV_PERIMETRE = "72"
+
 
 def _resoudre_acheteurs_niveaux_2_3(connexion) -> int:
     """
@@ -53,29 +62,41 @@ def _resoudre_acheteurs_niveaux_2_3(connexion) -> int:
     la durée de cet appel : `resoudre()` n'a ici aucun paramètre de contexte
     (siret_acheteur) susceptible de faire varier le résultat pour un même
     identifiant/nom, donc la mémoïsation est strictement sans risque de
-    résultat périmé. Nécessaire depuis le passage à un périmètre France
-    complet, tous secteurs, non filtré par CPV à l'import (31/08/2026, cf.
-    README) : le même acheteur mal identifié revient potentiellement dans
-    des dizaines de milliers de lignes bronze, et `resoudre_par_similarite()`
-    (pg_trgm contre 29,8M lignes) coûte jusqu'à plusieurs secondes par appel
-    — documenté comme limite acceptable "au volume actuel, à revoir si le
-    volume grossit significativement" (README) : le volume vient de grossir
-    d'un facteur ~40.
+    résultat périmé.
+
+    Restreint à code_cpv LIKE '72%' (correctif du
+    16/09/2026) : avec le passage à l'import complet (31/08/2026), le
+    périmètre non filtré est ~40x plus gros qu'avant et couvre tous les
+    secteurs, pas seulement les services informatiques -- vérifié en
+    conditions réelles, ça produit ~47 000 identifiants distincts à
+    résoudre côté TED (acheteurs + titulaires confondus), contre ~300
+    documentés pour le seul périmètre CPV72. `resoudre_par_similarite()`
+    (pg_trgm contre 29,8M lignes) coûte jusqu'à plusieurs secondes par
+    appel : sur les ~47 000 lignes hors périmètre, ce travail ne sert à
+    rien puisque `construire_gold_marches.py` les exclut de toute façon.
+    Restreindre au périmètre CPV72 ramène le volume à ~2 000 identifiants
+    distincts (mesuré le 16/09/2026), sans changer silver_marches elle-même
+    (toujours peuplée pour tout le périmètre, non filtrée) : seule cette
+    étape d'enrichissement coûteux devient sélective.
     """
     cache: dict[tuple[str | None, str | None], list[dict]] = {}
     lignes = connexion.execute(text(r"""
         SELECT uid, acheteur_id AS identifiant_brut, acheteur_nom AS nom_brut
         FROM bronze_decp_marches
         WHERE acheteur_id IS NOT NULL AND acheteur_id !~ '^\d{14}$'
-          AND uid IN (SELECT uid FROM silver_marches WHERE source = 'DECP' AND siret_acheteur IS NULL)
+          AND uid IN (
+              SELECT uid FROM silver_marches
+              WHERE source = 'DECP' AND siret_acheteur IS NULL AND code_cpv LIKE :prefixe_cpv
+          )
         UNION
         SELECT 'TED-' || publication_number, buyer_identifier, buyer_name
         FROM bronze_ted_notices
         WHERE buyer_identifier IS NOT NULL AND buyer_identifier !~ '^\d{14}$'
           AND ('TED-' || publication_number) IN (
-              SELECT uid FROM silver_marches WHERE source = 'TED' AND siret_acheteur IS NULL
+              SELECT uid FROM silver_marches
+              WHERE source = 'TED' AND siret_acheteur IS NULL AND code_cpv LIKE :prefixe_cpv
           )
-    """)).fetchall()
+    """), {"prefixe_cpv": f"{PREFIXE_CPV_PERIMETRE}%"}).fetchall()
 
     nb_resolus = 0
     for uid, identifiant_brut, nom_brut in lignes:
@@ -113,13 +134,18 @@ def _resoudre_titulaires_niveaux_2_3(connexion) -> int:
 
     Cache local (identifiant_brut, nom_brut, siret_acheteur) -> résultats,
     même principe et même raison que _resoudre_acheteurs_niveaux_2_3
-    ci-dessus (volume France complet depuis le 31/08/2026, ~40x plus gros).
-    Le siret_acheteur fait partie de la clé (contrairement au cache
-    acheteurs) car il peut réellement changer le résultat ici, via le
+    ci-dessus. Le siret_acheteur fait partie de la clé (contrairement au
+    cache acheteurs) car il peut réellement changer le résultat ici, via le
     niveau 4a — un même titulaire ambigu peut être désambiguïsé différemment
     selon l'acheteur contextuel. Un même (titulaire, acheteur) revient très
     fréquemment (plusieurs marchés/lots attribués au même titulaire par le
     même acheteur), donc le gain reste substantiel malgré la clé plus fine.
+
+    Restreint à code_cpv LIKE '72%' (correctif du
+    16/09/2026, même raison que _resoudre_acheteurs_niveaux_2_3 ci-dessus) :
+    non filtré, ce volume atteint ~42 000 identifiants distincts côté
+    titulaires TED (import complet, tous secteurs) contre ~1 500 dans le
+    seul périmètre CPV72.
     """
     cache: dict[tuple[str | None, str | None, str | None], list[dict]] = {}
     lignes = connexion.execute(text(r"""
@@ -129,7 +155,7 @@ def _resoudre_titulaires_niveaux_2_3(connexion) -> int:
         JOIN silver_marches sm ON sm.uid = bdm.uid
         WHERE bdm.titulaire_id IS NOT NULL AND bdm.titulaire_id !~ '^\d{14}$'
           AND bdm.titulaire_nom IS NOT NULL AND bdm.titulaire_nom <> ''
-          AND sm.source = 'DECP'
+          AND sm.source = 'DECP' AND sm.code_cpv LIKE :prefixe_cpv
         UNION
         SELECT DISTINCT 'TED-' || btn.publication_number, btn.winner_identifier, btn.winner_name,
                'TED', sm.siret_acheteur
@@ -137,8 +163,8 @@ def _resoudre_titulaires_niveaux_2_3(connexion) -> int:
         JOIN silver_marches sm ON sm.uid = 'TED-' || btn.publication_number
         WHERE btn.winner_identifier IS NOT NULL AND btn.winner_identifier !~ '^\d{14}$'
           AND btn.winner_name IS NOT NULL
-          AND sm.source = 'TED'
-    """)).fetchall()
+          AND sm.source = 'TED' AND sm.code_cpv LIKE :prefixe_cpv
+    """), {"prefixe_cpv": f"{PREFIXE_CPV_PERIMETRE}%"}).fetchall()
 
     nb_resolus = 0
     for uid, identifiant_brut, nom_brut, source, siret_acheteur in lignes:
@@ -338,4 +364,7 @@ def transformer_silver_marches():
 
 
 if __name__ == "__main__":
+    if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
     transformer_silver_marches()

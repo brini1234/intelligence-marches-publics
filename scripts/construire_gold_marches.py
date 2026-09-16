@@ -159,6 +159,30 @@ def construire_gold_marches():
             "SELECT methode_resolution, COUNT(*) FROM attributions GROUP BY 1 ORDER BY 2 DESC"
         )).fetchall()
 
+        # Détection des lignes gold devenues obsolètes (trouvé le 16/09/2026,
+        # historique_project) : ce script est "ON CONFLICT DO NOTHING" partout
+        # (ajout pur, jamais de suppression), ce qui est correct pour un
+        # chargement incrémental mais laisse `marches`/`attributions`
+        # accumuler des lignes qui ne correspondent plus à silver après un
+        # rebuild significatif de bronze/silver (ex. changement de fenêtre
+        # temporelle, correction de résolution d'identité, nouveau doublon
+        # inter-sources détecté). Repéré en conditions réelles : 2 052
+        # marchés + 2 488 attributions obsolètes retrouvés après le passage
+        # à l'import complet, faussant silencieusement sortant/concurrents/
+        # prix avec des données périmées tant que personne ne les nettoyait.
+        # Seulement un COMPTAGE ici, jamais une suppression automatique :
+        # `marches`/`attributions` sont des tables métier couvertes par la
+        # règle de sécurité des suppressions du README (backup horodaté +
+        # confirmation explicite avant tout DELETE > 10 lignes).
+        nb_marches_obsoletes = connexion.execute(text(f"""
+            SELECT COUNT(*) FROM marches m
+            WHERE NOT EXISTS (
+                SELECT 1 FROM silver_marches sm
+                WHERE sm.uid = m.uid AND sm.code_cpv LIKE '{PREFIXE_CPV_PERIMETRE}%'
+                  AND sm.siret_acheteur IS NOT NULL AND sm.doublon_probable_de IS NULL
+            )
+        """)).scalar()
+
     print(f"\n✅ Construction gold terminée. Totaux en base : "
           f"{nb_acheteurs:,} acheteurs, {nb_marches:,} marchés, "
           f"{nb_entreprises:,} entreprises, {nb_attributions:,} attributions".replace(",", " "))
@@ -170,7 +194,14 @@ def construire_gold_marches():
           f"{nb_exclus_doublons} doublon(s) probable(s) inter-sources "
           f"(visibles en silver_marches pour audit)")
     print(f"  Méthode de résolution des attributions : {dict(repartition_methode)}")
+    if nb_marches_obsoletes:
+        print(f"  ⚠️  {nb_marches_obsoletes} marché(s) gold ne correspondent plus à silver "
+              "(ajout pur ci-dessus, jamais de suppression) — nettoyage manuel recommandé "
+              "(backup horodaté + confirmation, cf. README) avant toute mesure de précision.")
 
 
 if __name__ == "__main__":
+    if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
     construire_gold_marches()

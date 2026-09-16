@@ -306,5 +306,8 @@ def executer():
 
 
 if __name__ == "__main__":
+    if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
     succes = executer()
     sys.exit(0 if succes else 1)

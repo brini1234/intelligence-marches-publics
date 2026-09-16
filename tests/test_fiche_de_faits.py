@@ -55,10 +55,25 @@ def test_acheteurs_comparables_elargissent_reellement_concurrents_et_prix():
     # une liste d'acheteurs comparables mais elle n'était jamais utilisée --
     # concurrents_observes/fourchette_prix restaient strictement ceux du
     # seul acheteur d'origine, contrairement à ce que le docstring du module
-    # et la documentation affirmaient. Cas réel : ce couple acheteur/CPV n'a
-    # que 22 marchés en propre mais des dizaines de concurrents une fois
-    # les acheteurs comparables (même NAF) fusionnés dans les statistiques.
-    fiche = construire_fiche_de_faits("05781313100026", "72413000")
+    # et la documentation affirmaient.
+    #
+    # Cas réel remplacé le 16/09/2026 : le passage à l'import complet (tous
+    # secteurs, France/3 ans, cf. README "Pipeline de données") a changé en
+    # profondeur le volume et le contenu de silver/gold -- l'ancien cas
+    # (05781313100026 / 72413000, "22 marchés en propre") avait entre-temps
+    # acquis assez d'historique propre (3 marchés dès le préfixe CPV à 4
+    # chiffres) pour ne plus déclencher l'élargissement CPV parent jusqu'au
+    # code à 2 chiffres, et ne fusionnait donc plus que ~4 concurrents
+    # comparables au lieu de "des dizaines" -- pas une régression du
+    # mécanisme lui-même (vérifié manuellement : la fusion reste correcte,
+    # simplement sur un pool plus étroit), seulement une donnée réelle
+    # devenue moins démonstrative avec le temps. Nouveau cas vérifié
+    # directement contre la base reconstruite du 16/09/2026 : un seul
+    # marché propre sur toute la famille CPV 722xxxxx (donc élargissement
+    # jusqu'au code à 2 chiffres, 72xxxxxx), acheteur de NAF 37.00Z
+    # (assainissement) ayant 7 comparables nationaux au même NAF portant à
+    # eux seuls 24 concurrents distincts sur le périmètre CPV72.
+    fiche = construire_fiche_de_faits("81172841900029", "72250000")
     valeurs = {f["cle"]: f for f in fiche["faits"]}
 
     fait_concurrents = valeurs["concurrents_observes"]
@@ -78,4 +93,4 @@ def test_acheteurs_comparables_elargissent_reellement_concurrents_et_prix():
     # Le sortant lui-même reste celui de l'acheteur d'origine uniquement --
     # jamais influencé par les acheteurs comparables (docstring de
     # agent_expansion_couverture.py : "jamais le sortant").
-    assert valeurs["titulaire_actuel"]["valeur"] == "HYDRO GEOTECHNIQUE SUD EST (HYDRO-GEO)"
+    assert valeurs["titulaire_actuel"]["valeur"] == "LABSOFT"

@@ -39,6 +39,7 @@ Vérifié en conditions réelles le 2026-08-03 (comme le préconise le sujet S1,
       nécessaire, contrairement à DECP dont le volume se compte en
       millions de lignes).
 """
+import time
 from datetime import date, timedelta
 
 import requests
@@ -55,6 +56,11 @@ CHAMPS = [
 ]
 
 TAILLE_PAGE = 250
+NB_ESSAIS_MAX = 8  # 429 constaté en conditions réelles (03/09/2026) sur une pagination
+# complète ~410 pages (scope="ALL", sans filtre CPV, cf. exporter_perimetre_complet
+# ci-dessous) : sans retry, une seule réponse 429 mi-parcours perdait toute la
+# progression déjà récupérée (exporter_perimetre_complet accumule en mémoire et ne
+# renvoie qu'à la fin). Même raisonnement que connectors/boamp.py::_requete_avec_retry.
 
 
 def _valeur_ou_premier_element(valeur):
@@ -94,6 +100,10 @@ def _premiere_date(valeur: str | None) -> str | None:
 
 
 def _rechercher_page(query: str, iteration_token: str | None = None) -> dict:
+    """POST avec retry/backoff sur 429 (honore Retry-After si présent, sinon
+    backoff exponentiel plafonné à 60s) et sur toute autre erreur réseau ou
+    HTTP transitoire — cf. NB_ESSAIS_MAX ci-dessus. Lève RuntimeError après
+    épuisement des essais, jamais un plantage sans contexte."""
     corps = {
         "query": query,
         "fields": CHAMPS,
@@ -103,9 +113,25 @@ def _rechercher_page(query: str, iteration_token: str | None = None) -> dict:
     }
     if iteration_token:
         corps["iterationNextToken"] = iteration_token
-    reponse = requests.post(BASE_URL, json=corps, timeout=30)
-    reponse.raise_for_status()
-    return reponse.json()
+
+    derniere_erreur = None
+    for essai in range(NB_ESSAIS_MAX):
+        try:
+            reponse = requests.post(BASE_URL, json=corps, timeout=30)
+            if reponse.status_code == 429:
+                attente = reponse.headers.get("Retry-After")
+                attente = int(attente) if attente and attente.isdigit() else 2 ** essai
+                time.sleep(min(attente, 60))
+                continue
+            reponse.raise_for_status()
+            return reponse.json()
+        except requests.exceptions.RequestException as e:
+            derniere_erreur = e
+            if essai < NB_ESSAIS_MAX - 1:
+                time.sleep(min(2 ** essai, 60))
+    raise RuntimeError(
+        f"TED : échec persistant après {NB_ESSAIS_MAX} essais (429 ou erreur réseau)"
+    ) from derniere_erreur
 
 
 def _code_cpv_du_perimetre(identifiants_cpv: list[str], prefixe_cpv: str | None) -> str | None:
