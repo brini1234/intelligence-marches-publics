@@ -80,15 +80,23 @@ def executer():
         )
 
         # --- Couverture etablissements vs attributions ---
-        nb_sirets_attributions = connexion.execute(text(
-            "SELECT COUNT(DISTINCT siret_titulaire) FROM attributions WHERE siret_titulaire IS NOT NULL"
-        )).scalar()
-        nb_etablissements = connexion.execute(text("SELECT COUNT(*) FROM etablissements")).scalar()
-        taux_couverture_etab = nb_etablissements / nb_sirets_attributions if nb_sirets_attributions else 0
+        # Numérateur = SIRET titulaires effectivement présents dans
+        # etablissements, pas COUNT(*) de la table (correctif du 26/09/2026) :
+        # etablissements contient aussi des SIRET qui ne sont plus titulaires
+        # d'aucune attribution (340 constatés), ce qui gonflait le taux
+        # au-delà de 100% et aurait masqué une vraie baisse de couverture.
+        nb_sirets_attributions, nb_sirets_couverts = connexion.execute(text("""
+            SELECT COUNT(DISTINCT a.siret_titulaire),
+                   COUNT(DISTINCT a.siret_titulaire) FILTER (WHERE e.siret IS NOT NULL)
+            FROM attributions a
+            LEFT JOIN etablissements e ON e.siret = a.siret_titulaire
+            WHERE a.siret_titulaire IS NOT NULL
+        """)).one()
+        taux_couverture_etab = nb_sirets_couverts / nb_sirets_attributions if nb_sirets_attributions else 0
         _verifier(
             "Couverture etablissements >= 95% des SIRET titulaires réels",
             taux_couverture_etab >= 0.95,
-            f"{nb_etablissements}/{nb_sirets_attributions} ({taux_couverture_etab:.0%})",
+            f"{nb_sirets_couverts}/{nb_sirets_attributions} ({taux_couverture_etab:.1%})",
         )
 
         # --- Cas hors France bien isolés, pas mélangés avec les vrais échecs ---
