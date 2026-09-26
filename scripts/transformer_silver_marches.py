@@ -18,7 +18,9 @@ Deux tables distinctes, pas une seule :
       silver_marches ferait disparaître des concurrents réels, exactement
       ce que ce projet doit éviter. Dédupliquée par (uid, siret_titulaire)
       sur tout l'historique bronze ; seuls les SIRET valides à 14 chiffres
-      sont retenus (jamais un identifiant inventé).
+      sont retenus (jamais un identifiant inventé), directement ou après
+      normalisation déterministe (niveau 2, tous secteurs : espaces,
+      SIREN seul, TVA FR -> SIRET du siège).
 
 Détection de doublons inter-sources (limite documentée dans le README : un
 même marché au-dessus des seuils UE peut apparaître à la fois dans DECP et
@@ -39,7 +41,11 @@ sys.path.append(".")
 from sqlalchemy import text
 
 from db.connection import get_engine
-from scripts.resolution_identite import resoudre
+from scripts.resolution_identite import (
+    resoudre,
+    resoudre_par_normalisation,
+    resoudre_siren_vers_siret_siege,
+)
 
 # Périmètre métier du produit (sujet, section 6 : "services informatiques,
 # CPV 72xxxxxx"), même constante que scripts/construire_gold_marches.py.
@@ -120,6 +126,72 @@ def _resoudre_acheteurs_niveaux_2_3(connexion) -> int:
         })
         nb_resolus += resultat_maj.rowcount
     return nb_resolus
+
+
+def _resoudre_titulaires_niveau_2_tous_secteurs(connexion) -> int:
+    """
+    Niveau 2 seul (normalisation déterministe, cf. resoudre_par_normalisation)
+    appliqué aux titulaires de TOUS les secteurs, pas seulement au périmètre
+    CPV72 de _resoudre_titulaires_niveaux_2_3 ci-dessous.
+
+    Correctif du 26/09/2026 : la restriction CPV72 de l'étape niveaux 2/3
+    vise le coût du niveau 3 (pg_trgm, plusieurs secondes par appel), mais
+    embarquait aussi le niveau 2, qui ne coûte presque rien (regex + au plus
+    une lecture indexée de sirene_stock_etablissement par SIREN). Mesuré en
+    base le 26/09/2026, côté TED hors CPV72 : 6 044 SIRET avec espaces,
+    2 187 SIREN seuls et 65 TVA FR n'arrivaient jamais en silver_attributions
+    — silver n'était donc pas réellement "non filtrée" côté titulaires.
+
+    Le résultat 'etranger' (pseudo-SIRET dérivé d'une TVA étrangère) est
+    volontairement exclu ici : ce n'est pas un SIRET réel, il reste limité
+    au périmètre CPV72 via resoudre(), comme avant ce correctif.
+
+    Retourne le nombre de couples (marché, titulaire) réellement ajoutés
+    (les couples déjà présents au niveau 1 sont ignorés, ON CONFLICT).
+    """
+    lignes = connexion.execute(text(r"""
+        SELECT bdm.uid, bdm.titulaire_id, bdm.titulaire_nom, 'DECP'
+        FROM bronze_decp_marches bdm
+        JOIN silver_marches sm ON sm.uid = bdm.uid AND sm.source = 'DECP'
+        WHERE bdm.titulaire_id IS NOT NULL AND bdm.titulaire_id !~ '^\d{14}$'
+        UNION
+        SELECT 'TED-' || btn.publication_number, btn.winner_identifier, btn.winner_name, 'TED'
+        FROM bronze_ted_notices btn
+        JOIN silver_marches sm ON sm.uid = 'TED-' || btn.publication_number AND sm.source = 'TED'
+        WHERE btn.winner_identifier IS NOT NULL AND btn.winner_identifier !~ '^\d{14}$'
+    """)).fetchall()
+
+    # SIREN -> SIRET du siège : un même titulaire revient sur de nombreux
+    # marchés, une seule lecture SIRENE par SIREN suffit.
+    cache_siege: dict[str, str | None] = {}
+    a_inserer = []
+    for uid, identifiant_brut, nom_brut, source in lignes:
+        for r in resoudre_par_normalisation(identifiant_brut):
+            if r["methode"] == "etranger":
+                continue
+            siret = r["siret"]
+            if siret is None and r["siren"] is not None:
+                if r["siren"] not in cache_siege:
+                    cache_siege[r["siren"]] = resoudre_siren_vers_siret_siege(r["siren"], connexion)
+                siret = cache_siege[r["siren"]]
+            if siret is not None:
+                a_inserer.append({
+                    "uid": uid, "siret": siret, "nom": nom_brut,
+                    "source": source, "methode": r["methode"],
+                })
+
+    if not a_inserer:
+        return 0
+    # rowcount n'est pas fiable en executemany (dépend du driver) : on
+    # mesure l'écart de COUNT(*) avant/après.
+    nb_avant = connexion.execute(text("SELECT COUNT(*) FROM silver_attributions")).scalar()
+    connexion.execute(text("""
+        INSERT INTO silver_attributions (uid, siret_titulaire, nom_titulaire, source, methode_resolution)
+        VALUES (:uid, :siret, :nom, :source, :methode)
+        ON CONFLICT (uid, siret_titulaire) DO NOTHING
+    """), a_inserer)
+    nb_apres = connexion.execute(text("SELECT COUNT(*) FROM silver_attributions")).scalar()
+    return nb_apres - nb_avant
 
 
 def _resoudre_titulaires_niveaux_2_3(connexion) -> int:
@@ -265,6 +337,10 @@ def transformer_silver_marches():
               AND ('TED-' || publication_number) IN (SELECT uid FROM silver_marches WHERE source = 'TED')
             ON CONFLICT (uid, siret_titulaire) DO NOTHING
         """))
+
+        print("  Résolution d'identité niveau 2 (titulaires, tous secteurs) — normalisation déterministe ...")
+        nb_titulaires_normalises = _resoudre_titulaires_niveau_2_tous_secteurs(connexion)
+        print(f"    {nb_titulaires_normalises} couple(s) marché/titulaire supplémentaire(s) résolu(s)")
 
         print("  Résolution d'identité niveaux 2/3 (acheteurs) — normalisation puis rapprochement flou ...")
         nb_acheteurs_resolus = _resoudre_acheteurs_niveaux_2_3(connexion)

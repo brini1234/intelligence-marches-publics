@@ -80,7 +80,7 @@ with engine.connect() as c:
         print(t, c.execute(text(f'SELECT count(*) FROM {t}')).scalar())
 "
 ```
-Attendu (17/09/2026) : `bronze_decp_marches` 1 178 240, `bronze_ted_notices` 102 081, `silver_marches` 1 042 553, `silver_attributions` 1 102 951, `marches` 27 299, `attributions` 29 030.
+Attendu (26/09/2026) : `bronze_decp_marches` 1 178 240, `bronze_ted_notices` 102 081, `silver_marches` 1 042 553, `silver_attributions` 1 113 621, `marches` 27 299, `attributions` 29 061.
 
 Relancer tout le pipeline depuis zéro (plusieurs heures, seulement si les sources source ont changé) :
 ```bash
