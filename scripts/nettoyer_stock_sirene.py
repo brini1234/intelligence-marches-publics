@@ -81,6 +81,16 @@ def nettoyer_stock_sirene():
             connexion.execute(text(f'CREATE UNIQUE INDEX IF NOT EXISTS "uniq_{table}_{cle}" '
                                     f'ON "{table}" ("{cle}")'))
 
+            # L'index non-unique "idx_{table}_{cle}" a été créé par
+            # importer_stock_sirene_national.py pour accélérer la déduplication
+            # ci-dessus (_supprimer_doublons). Une fois l'index unique en place
+            # sur la même colonne, il fait exactement double emploi (même
+            # colonne, même méthode btree) : le laisser traîner ne sert à
+            # aucune requête et coûte ~1 Go sur le stock national (29-44M
+            # lignes) en plus d'un temps de reconstruction inutile à chaque
+            # rechargement complet.
+            connexion.execute(text(f'DROP INDEX IF EXISTS "idx_{table}_{cle}"'))
+
             # UNLOGGED -> LOGGED : maintenant que les données sont propres, on les
             # rend durables (résistantes à un crash Postgres), au prix d'un léger
             # ralentissement d'écriture qu'on n'utilise plus à ce stade.
