@@ -151,7 +151,7 @@ Ce mécanisme se propage dans `fiche_de_faits.py`, qui dégrade explicitement la
 
 **Le sujet a été fourni en texte intégral au cours de cette rédaction** (section 8 : tableau de 6 métriques — taux d'affirmations sourcées, taux d'hallucination, précision résolution d'identité, précision détection du sortant, couverture, coût/latence par briefing — et 5 pièges de démonstration). Le tableau ci-dessous reprend l'intégralité des 5 pièges et des 6 métriques : mesurées par un script quand c'est possible, garanties par construction du code sinon, ou signalées explicitement comme non mesurées — jamais omises. Chaque ligne mesurée est vérifiée par une commande reproductible, relancée le 10/08/2026.
 
-| Exigence (section 8) | Cible | Mesure au 16-17/09/2026 (historique : 87%/97% au 10/08/2026, 92%/100% au 31/08/2026, cf. sections 15 et 20) | Commande |
+| Exigence (section 8) | Cible | Mesure au 16-17/09/2026, revérifiée à l'identique le 29/09/2026 (cf. section 21) (historique : 87%/97% au 10/08/2026, 92%/100% au 31/08/2026, cf. sections 15 et 20) | Commande |
 |---|---|---|---|
 | Précision résolution d'identité (France) | > 90% | **92%** global / **100%** hors homonymie — **cible atteinte** (cf. section 15) | `python scripts/mesurer_precision_resolution.py` |
 | Piège « Acheteur sans historique » → données insuffisantes | déclenchement réel | **PASS** | `python scripts/harnais_evaluation.py` |
@@ -568,6 +568,30 @@ Cette section documente une nouvelle vérification totale du dépôt, sur une ma
 | Latence médiane, cas pauvre (agent d'expansion) | — | ~303 ms (contre ~245 ms section 19, ~150 ms section 13) — hausse attendue, volume de données nettement supérieur depuis l'import complet réellement abouti |
 
 **Conclusion** : contrairement aux sections 9-19 (bugs ponctuels sur du code déjà en production), cette passe a trouvé que la fonctionnalité phare documentée depuis la section 16 — l'import complet non filtré — **n'avait en réalité jamais tourné avec succès** sur cette machine, silencieusement masqué par une base héritée d'un état antérieur qui continuait à faire passer les tests dépendants des données (pas ceux vérifiant explicitement l'absence de filtre). Un deuxième défaut structurel, présent depuis l'introduction de l'architecture bronze/silver/gold (section 2) mais jamais détecté faute d'avoir recalculé l'arithmétique publiée, a été trouvé par le simple fait de resynchroniser un tableau de volumétrie plutôt que de recopier les chiffres du rebuild précédent. Les deux confirment la conclusion déjà tirée section 19 : une documentation cohérente avec elle-même n'est pas une preuve que le code fait ce qu'elle décrit ; seule une ré-exécution complète, jusqu'au dernier chiffre publié, le confirme.
+
+## 21. Correctif du 26/09/2026 et vérification totale du 29/09/2026
+
+**1. Niveau 2 de résolution d'identité appliqué aux titulaires de tous les secteurs (26/09/2026, commit `0c5bc02`).** L'optimisation de coût de la section 20 restreignait les niveaux 2 **et** 3 au périmètre CPV72. Seul le niveau 3 (rapprochement flou `pg_trgm`, jusqu'à plusieurs secondes par appel) justifiait cette restriction ; le niveau 2 (normalisation déterministe : regex et au plus une lecture indexée SIRENE par SIREN) ne coûte presque rien. Conséquence mesurée en base : hors CPV72, les titulaires avec SIRET à espaces (6 044 côté TED), SIREN seul (2 187) ou TVA FR (65) n'arrivaient jamais en `silver_attributions` — silver n'était donc pas réellement non filtrée côté titulaires, contrairement au principe de la section 16. Nouvelle étape `_resoudre_titulaires_niveau_2_tous_secteurs` (DECP et TED, hors pseudo-SIRET `etranger`, qui reste limité au périmètre CPV72) : **+10 670 couples marché/titulaire en silver** (1 102 951 → 1 113 621), dont 31 dans le périmètre CPV72 et donc en gold (29 030 → 29 061 attributions, 7 444 → 7 450 entreprises, 24 801 → 24 826 marchés reliés à un titulaire, toujours 90,9%). Les 6 nouvelles entreprises ont été enrichies depuis le stock SIRENE national.
+
+**2. Calcul de couverture des établissements corrigé (commit `87d2d2b`).** `verification_finale_sirene.py` divisait le nombre total de lignes `etablissements` par le nombre de SIRET titulaires distincts : les 340 établissements qui ne sont plus titulaires d'aucune attribution gonflaient le taux au-delà de 100% (8 856/8 634, soit 103%) et auraient masqué une vraie baisse de couverture. Le taux compte désormais les seuls SIRET titulaires présents dans `etablissements` : **8 516/8 634 (98,6%)**, toujours au-dessus du seuil de 95%.
+
+**3. Index redondant supprimé dans `nettoyer_stock_sirene.py` (commit `f678fca`).** Une fois l'index unique `uniq_{table}_{cle}` créé, l'index non unique `idx_{table}_{cle}` posé par `importer_stock_sirene_national.py` sur la même colonne ne sert plus à aucune requête (~1 Go sur le stock national). L'index `idx_sirene_stock_etablissement_siren`, sur une autre colonne et utilisé par les recherches par SIREN, est conservé.
+
+**4. Vérification totale du 29/09/2026, ré-exécution effective sur la base réelle** (PostgreSQL 16.15, pgvector 0.8.6, pg_trgm 1.6 ; service Windows `postgresql-marches-publics` en démarrage automatique, redémarrage automatique en cas de plantage configuré le même jour) :
+
+| Vérification | Résultat |
+|---|---|
+| `pytest tests/` | **84 passed, 4 skipped** (2 skip = défi anti-bot DuckDuckGo ; 2 skip = `ANTHROPIC_API_KEY` non configurée) |
+| `python scripts/harnais_evaluation.py` | **10/10** |
+| `python scripts/mesurer_precision_resolution.py` | **92%** global (36/39), **100%** hors homonymie (33/33) |
+| `python scripts/mesurer_precision_sortant.py` | **6/6 (100%)**, 1 cas exclu (structurellement indécidable), confiance 7/7 |
+| `python scripts/verification_finale_sirene.py` | **8/8** |
+| `python scripts/mesurer_cout_latence_briefing.py` | 0,00 EUR ; latence médiane 69-321 ms (72 ms cas riche, 321 ms cas pauvre avec agent d'expansion) |
+| Volumétrie (requêtes directes) | identique au README : bronze 1 178 240 / 102 081, silver 1 042 553 / 1 113 621, gold 27 299 marchés, 29 061 attributions, 7 450 entreprises, 8 856 établissements, 2 922 acheteurs |
+| Embeddings | 0 marché à objet non vide sans embedding (27 271/27 299) |
+| Doublons DECP/TED flagués (CPV72) | 470 |
+
+**Documentation resynchronisée à cette occasion** : le README contenait encore quelques chiffres antérieurs aux reconstructions successives, parfois en contradiction avec une autre section du même fichier — couverture des embeddings (26 875/26 903 → 27 271/27 299), nombre d'entreprises `INTROUVABLE_API` (7 → 18), SIRET titulaires sans établissement (99 → 118), doublons DECP/TED (39 → 470). Tous recalculés par requête directe, jamais recopiés.
 
 ## Annexe
 
