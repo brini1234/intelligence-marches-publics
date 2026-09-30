@@ -622,7 +622,9 @@ Relecture section par section du sujet contre le code, puis ré-exécution sur l
 | `construire_gold_marches.py` (relancé, idempotent) | mêmes totaux, aucune ligne ajoutée |
 | `generer_embeddings_marches.py`, `detecter_recoupement_boamp.py`, `graphe_concurrentiel.py`, `marches_similaires.py`, `agent_expansion_couverture.py`, `detecter_sortant.py` | exécutés sans erreur |
 
-**Non vérifié** : la verbalisation par un vrai appel LLM (`ANTHROPIC_API_KEY` absente du `.env` au moment de l'audit) ; bronze et silver non reconstruits (retéléchargement des sources et `TRUNCATE` silver — hors d'une vérification non destructive).
+| Connecteurs bronze, sans écriture en base | DECP : export DuckDB de 1 135 992 lignes en 1 s (moins que les 1 178 240 en bronze : la fenêtre de 3 ans, relative à la date du jour, a glissé depuis le chargement) ; TED : API Search v3 répond, 500 avis sur 2 pages en 2 s |
+
+**Non vérifié** : la verbalisation par un vrai appel LLM (`ANTHROPIC_API_KEY` absente du `.env` au moment de l'audit) ; la reconstruction de silver (`TRUNCATE` + repeuplement de 2,1 M de lignes, en une transaction) n'a pas été relancée faute d'autorisation dans la session d'audit ; le rechargement bronze n'a pas été relancé non plus : depuis le Parquet DECP en cache (03/08/2026), il n'ajouterait qu'une copie des mêmes lignes à une table append-only — une mise à jour réelle suppose de retélécharger les sources, décision de mise à jour des données plutôt que de vérification.
 
 **Constat de périmètre** : la fenêtre « 3 ans » s'applique à la date de *publication* (première publication en gold : 03/08/2023), pas à la date de notification. 5 946 des 27 299 marchés gold (22 %) ont été notifiés avant cette date — marchés pluriannuels ou publiés tardivement, dont 31 seulement avant 2020 (le plus ancien : 28/11/2016). L'historique réellement couvert par les notifications est donc plutôt de 3 à 6 ans, cohérent avec les « 3 à 5 ans » du sujet ; documenté ici plutôt que filtré, puisque ces marchés alimentent légitimement les chaînes de renouvellement.
 
