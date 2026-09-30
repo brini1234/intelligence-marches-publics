@@ -164,7 +164,7 @@ Ce mécanisme se propage dans `fiche_de_faits.py`, qui dégrade explicitement la
 | Couverture jamais présentée comme 100% trompeur | — | **PASS** | `python scripts/harnais_evaluation.py` |
 | Bloc de décision ≤ 10 lignes | ≤ 10 lignes | **PASS** — 8 lignes sur le cas testé | `python scripts/harnais_evaluation.py` |
 | Cohérence référentiel SIRENE (stock, enrichissement, orphelins) | 8 contrôles | **8/8** | `python scripts/verification_finale_sirene.py` |
-| Suite de tests | — | **84 passed, 4 skipped** (cf. section 20 — 2 des 4 `skipped` dépendent d'une vraie réponse de DuckDuckGo, aléa réseau documenté, jamais un échec de logique ; les 2 autres nécessitent `ANTHROPIC_API_KEY`, absente par défaut) | `pytest tests/` |
+| Suite de tests | — | **96 passed, 4 skipped** (cf. section 22 — 2 des 4 `skipped` dépendent d'une vraie réponse de DuckDuckGo, aléa réseau documenté, jamais un échec de logique ; les 2 autres nécessitent `ANTHROPIC_API_KEY`, absente par défaut) | `pytest tests/` |
 | Précision de détection du sortant, sur cas connus | mesurée | **6/6 (100%)** sur le SIREN du sortant, 1 cas exclu car structurellement indécidable (documenté), 7/7 sur la concordance du niveau de confiance — depuis le 19/08/2026, cf. section 12 | `python scripts/mesurer_precision_sortant.py` |
 | Coût et latence par briefing | mesurés | **0,00 EUR par construction** (aucune passerelle LLM, aucun appel réseau dans le chemin de génération — cf. note ci-dessous) ; latence médiane 63-303 ms selon le cas (~63-97 ms cas riche/ambigu/sans données, ~303 ms cas pauvre qui déclenche réellement l'agent d'expansion) — hausse attendue depuis le 19-20/08/2026 (cf. sections 12-13), volume de données nettement supérieur depuis l'import complet réellement abouti (cf. section 20) | `python scripts/mesurer_cout_latence_briefing.py` |
 
@@ -593,6 +593,39 @@ Cette section documente une nouvelle vérification totale du dépôt, sur une ma
 
 **Documentation resynchronisée à cette occasion** : le README contenait encore quelques chiffres antérieurs aux reconstructions successives, parfois en contradiction avec une autre section du même fichier — couverture des embeddings (26 875/26 903 → 27 271/27 299), nombre d'entreprises `INTROUVABLE_API` (7 → 18), SIRET titulaires sans établissement (99 → 118), doublons DECP/TED (39 → 470). Tous recalculés par requête directe, jamais recopiés.
 
+## 22. Audit complet contre le sujet du 30/09/2026 : porte de vérification, point d'entrée et rapport détaillé
+
+Relecture section par section du sujet contre le code, puis ré-exécution sur la base réelle. Quatre défauts de la porte anti-hallucination et deux livrables manquants, tous reproduits avant correction.
+
+**1. Porte de vérification (`verification_mecanique.py`) — quatre trous réels**, reproduits sur la fiche réelle de la Cour des comptes (SIRET 11000028800016, CPV 72220000) :
+- *Nom inventé en casse normale accepté* : « Concurrents observés : Capgemini, Sopra Steria. » passait (`valide=True`) — la détection des noms ne voyait que les suites de mots tout en majuscules. La garantie « 0 % d'hallucination » (section 8) ne tenait donc que si le LLM écrivait ses inventions en majuscules. Corrigé : tout mot à majuscule initiale doit appartenir au vocabulaire fixe du gabarit ou apparaître dans la fiche.
+- *Date recombinée acceptée* : « 2026-12-11 » passait, chacune de ses composantes (2026, 12, 11) existant séparément dans la fiche. Le sujet exige « toute date ». Corrigé : les dates (AAAA-MM-JJ et JJ/MM/AAAA) sont contrôlées comme un tout (`dates_non_justifiees`).
+- *Montant légitime au format français rejeté* : « 41 864 € » était lu comme 41 et 864 — faux positif qui aurait fait tomber la verbalisation LLM en repli déterministe à chaque montant bien formaté. Corrigé (espace, espace insécable, espace fine insécable).
+- *Texte « Données insuffisantes » de centrale d'achat rejeté par sa propre porte* : la `raison` de la fiche (qui cite « UGAP ») n'était pas dans les valeurs autorisées. Corrigé ; le double point final (« .. ») de ce texte aussi (`verbaliser.py`).
+
+**2. Bloc de décision (`bloc_de_decision.py`)** : montants au format français (« 41,864 € » se lit « 41 virgule 864 » pour un lecteur français — le public visé), niveau de confiance explicite du sortant et identifiant du marché qui l'étaye (section 4 : *« un sortant probable avec un niveau de confiance et les identifiants des marchés qui l'étayent »*). Toujours 8 lignes ; un test vérifie désormais que le bloc lui-même passe la porte de vérification.
+
+**3. Point d'entrée et rapport détaillé (`scripts/briefing.py`, nouveau)**. Le tableau S7 annonçait un « rapport détaillé » qui n'existait dans aucun fichier, et obtenir un briefing supposait de modifier le SIRET/CPV codés en dur dans un `__main__`. `briefing.py` prend un acheteur (SIRET ou nom, ambiguïté signalée) et un objet (CPV exact ou texte libre, CPV déduit par similarité), écrit la fiche JSON et un rapport Markdown (faits, provenance, couverture, marchés sources, synthèse et résultat de la porte). Seuil de similarité mesuré, limite de calibration documentée (README, section « Utilisation »).
+
+**4. Ré-exécution sur la base réelle** (PostgreSQL 16.15, pgvector 0.8.6, pg_trgm 1.6) :
+
+| Vérification | Résultat |
+|---|---|
+| `pytest tests/` | **96 passed, 4 skipped** (84 + 12 tests ajoutés ; 2 skip = défi anti-bot DuckDuckGo ; 2 skip = `ANTHROPIC_API_KEY` absente de `.env`) |
+| `python scripts/harnais_evaluation.py` | **11/11** (nouveau contrôle : nom en casse normale et date recombinée rejetés) |
+| `python scripts/mesurer_precision_resolution.py` | **92 %** global (36/39), **100 %** hors homonymie (33/33) |
+| `python scripts/mesurer_precision_sortant.py` | **6/6 (100 %)**, 1 cas exclu, confiance 7/7 |
+| `python scripts/verification_finale_sirene.py` | **8/8** |
+| `python scripts/mesurer_cout_latence_briefing.py` | 0,00 EUR ; latence médiane 64-302 ms machine au repos (cas riche 66 ms, cas pauvre avec agent d'expansion 302 ms), 107-466 ms lors d'une première mesure faite pendant l'exécution des tests |
+| Volumétrie (requêtes directes) | identique au README, à la ligne près, sur les 9 tables bronze/silver/gold |
+| Intégrité gold | 0 attribution orpheline, 0 attribution sans entreprise, 0 marché hors CPV72, 0 marché gold absent de silver |
+| `construire_gold_marches.py` (relancé, idempotent) | mêmes totaux, aucune ligne ajoutée |
+| `generer_embeddings_marches.py`, `detecter_recoupement_boamp.py`, `graphe_concurrentiel.py`, `marches_similaires.py`, `agent_expansion_couverture.py`, `detecter_sortant.py` | exécutés sans erreur |
+
+**Non vérifié** : la verbalisation par un vrai appel LLM (`ANTHROPIC_API_KEY` absente du `.env` au moment de l'audit) ; bronze et silver non reconstruits (retéléchargement des sources et `TRUNCATE` silver — hors d'une vérification non destructive).
+
+**Constat de périmètre** : la fenêtre « 3 ans » s'applique à la date de *publication* (première publication en gold : 03/08/2023), pas à la date de notification. 5 946 des 27 299 marchés gold (22 %) ont été notifiés avant cette date — marchés pluriannuels ou publiés tardivement, dont 31 seulement avant 2020 (le plus ancien : 28/11/2016). L'historique réellement couvert par les notifications est donc plutôt de 3 à 6 ans, cohérent avec les « 3 à 5 ans » du sujet ; documenté ici plutôt que filtré, puisque ces marchés alimentent légitimement les chaînes de renouvellement.
+
 ## Annexe
 
 ### A. Instructions de reproduction
@@ -625,7 +658,7 @@ Mapping S1-S8 repris du texte intégral du sujet (section 6, tableau de déroule
 | S4 | Embeddings d'objets de marché, couche graphe, requêtes récursives → marchés similaires et traversées fonctionnels | ✅ | `pytest tests/test_marches_similaires.py tests/test_graphe_concurrentiel.py` passe ; couverture embeddings 100% (cf. README) |
 | S5 | Détection du sortant, fréquences, distributions de prix, profil acheteur, métriques de couverture → fiche de faits complète sur un vrai marché | ✅ | `detecter_sortant.py` + `fiche_de_faits.py`, `pytest tests/test_detecter_sortant.py` passe, cf. section 5 |
 | S6 | Agents d'expansion et d'identité (agent web si le temps le permet) → couverture améliorée sur les cas pauvres | ✅ | Les 3 agents implémentés — expansion pilotée par la couverture, investigation d'identité (cf. sections 3, 10, 11), enrichissement web (agent optionnel selon le sujet, ajouté le 31/08/2026, cf. section 15) ; `harnais_evaluation.py` ne liste plus aucun piège `NON IMPLÉMENTÉ` |
-| S7 | Verbalisation, porte de vérification, bloc de décision, rapport détaillé → briefing lisible en 30 secondes | ✅ | `verbaliser.py`, `verification_mecanique.py`, `bloc_de_decision.py` ; `pytest tests/test_verification_mecanique.py tests/test_bloc_de_decision.py` passe (8 tests) |
+| S7 | Verbalisation, porte de vérification, bloc de décision, rapport détaillé → briefing lisible en 30 secondes | ✅ | `verbaliser.py`, `verification_mecanique.py`, `bloc_de_decision.py`, `briefing.py` (point d'entrée + rapport détaillé, ajouté le 30/09/2026, cf. section 22) ; `pytest tests/test_verification_mecanique.py tests/test_bloc_de_decision.py tests/test_briefing.py` passe (22 tests) |
 | S8 | Harnais d'évaluation, mesures, rapport, démonstration → rapport, démo et README | ✅ | Harnais fonctionnel (10/10, `harnais_evaluation.py`), **les 6 métriques de la section 8 du sujet sont désormais toutes mesurées** (`mesurer_precision_resolution.py`, `mesurer_precision_sortant.py`, `mesurer_cout_latence_briefing.py`, `verification_finale_sirene.py`, cf. section 6 et 12) ; démonstration écrite (`docs/script_demonstration_10min.md`, déroulé minuté ; `docs/guide_demonstration.md`, référence technique) ; ce rapport reste à valider par l'encadrant avant diffusion (cf. « Points non vérifiés directement » ci-dessous) |
 
 ---

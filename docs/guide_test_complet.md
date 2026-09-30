@@ -24,12 +24,12 @@ Si la connexion échoue (PostgreSQL portable, pas un service Windows) :
 ```bash
 venv\Scripts\python.exe -m pytest tests/ -q
 ```
-Attendu : `84 passed, 4 skipped`.
+Attendu : `96 passed, 4 skipped`.
 
 ```bash
 venv\Scripts\python.exe scripts/harnais_evaluation.py
 ```
-Attendu : `10/10 vérifications automatisées réussies`.
+Attendu : `11/11 vérifications automatisées réussies`.
 
 Si ces deux commandes passent, chaque partie ci-dessous passera aussi — elles ne font que zoomer sur un sous-ensemble de la même suite.
 
@@ -224,7 +224,9 @@ Vérifier que chaque entrée porte bien `provenance` et `couverture` — c'est l
 
 Voir le bloc de décision final (l'entrée simple → sortie du sujet, section 1) :
 ```bash
-venv\Scripts\python.exe scripts/bloc_de_decision.py
+venv\Scripts\python.exe scripts/briefing.py --acheteur "cour des comptes" --cpv 72220000 --json sortie/fiche.json --rapport sortie/rapport.md
+venv\Scripts\python.exe scripts/briefing.py --acheteur 11000028800016 --objet "audit des systèmes d'information"
+venv\Scripts\python.exe -m pytest tests/test_briefing.py -v
 ```
 Attendu : 8 lignes (≤ 10 imposées), sortant + concurrents + fourchette de prix + pondération + couverture globale.
 
@@ -246,7 +248,7 @@ Sans clé : ces 2 tests apparaissent `skipped`, comportement attendu (le chemin 
 ```bash
 venv\Scripts\python.exe scripts/harnais_evaluation.py
 ```
-Attendu : `10/10` — couvre les 5 pièges de soutenance (acheteur sans historique, centrale d'achat, CPV mal saisi, changement de raison sociale, concurrent hors France) + 5 contrôles structurels (anti-hallucination, 5 éléments du bloc, couverture honnête, limite de 10 lignes).
+Attendu : `11/11` — couvre les 5 pièges de soutenance (acheteur sans historique, centrale d'achat, CPV mal saisi, changement de raison sociale, concurrent hors France) + 6 contrôles structurels (anti-hallucination sur un chiffre, anti-hallucination sur un nom en casse normale et une date recombinée, texte riche valide, 5 éléments du bloc, couverture honnête, limite de 10 lignes).
 
 ---
 

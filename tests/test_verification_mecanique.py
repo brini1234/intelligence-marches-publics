@@ -109,3 +109,50 @@ def test_verbaliser_gere_famille_sans_aucun_montant_ou_elargie():
         # dépend d'un périmètre plus large que l'acheteur/CPV exact demandé.
         assert "elargissement_applique" in valeurs
         assert prix_min["couverture"] < 1.0
+
+# Correctifs du 30/09/2026 (audit complet contre le sujet, section 4 :
+# "tout nombre, tout nom d'entreprise et toute date du texte figurent bien
+# dans la fiche de faits") — quatre trous réels, chacun reproduit sur la
+# fiche réelle de la Cour des comptes avant correction.
+FICHE_DATES = {
+    "faits": [
+        {"cle": "titulaire_actuel", "valeur": "ACME SAS", "provenance": "test", "couverture": 1.0},
+        {"cle": "date_dernier_marche", "valeur": "2026-07-21", "provenance": "test", "couverture": 1.0},
+        {"cle": "date_expiration_estimee", "valeur": "2026-12-11", "provenance": "test", "couverture": 1.0},
+        {"cle": "fourchette_prix_min", "valeur": 41864.0, "provenance": "test", "couverture": 1.0},
+        {"cle": "fourchette_prix_max", "valeur": 95840.0, "provenance": "test", "couverture": 1.0},
+    ],
+    "couverture_globale": 1.0,
+    "marches_support": ["uid_test"],
+}
+
+
+def test_nom_invente_en_casse_mixte_est_rejete():
+    resultat = verifier_texte("Concurrents observés : Capgemini, Sopra Steria.", FICHE_DATES)
+    assert resultat["valide"] is False
+    assert "Capgemini" in resultat["noms_non_justifies"]
+
+
+def test_date_recombinee_a_partir_de_composantes_legitimes_est_rejetee():
+    # 2026, 12 et 21 existent tous séparément dans la fiche, pas cette date.
+    resultat = verifier_texte("Dernier marché notifié le 2026-12-21.", FICHE_DATES)
+    assert resultat["valide"] is False
+    assert "2026-12-21" in resultat["dates_non_justifiees"]
+
+
+def test_date_legitime_au_format_francais_est_acceptee():
+    assert verifier_texte("Échéance estimée : 11/12/2026.", FICHE_DATES)["valide"] is True
+
+
+def test_montant_legitime_au_format_francais_est_accepte():
+    texte = "Fourchette de prix constatée : 41 864 € à 95\u202f840 €."
+    assert verifier_texte(texte, FICHE_DATES)["valide"] is True
+
+
+def test_texte_donnees_insuffisantes_de_centrale_achat_passe_sa_propre_verification():
+    # Cas réel : UGAP (centrale d'achat, piège du sujet section 8) — la
+    # raison cite des noms en majuscules qui n'étaient pas autorisés.
+    fiche = construire_fiche_de_faits("77605646700587", "72220000")
+    texte = verbaliser(fiche)
+    assert not texte.endswith("..")
+    assert verifier_texte(texte, fiche)["valide"] is True

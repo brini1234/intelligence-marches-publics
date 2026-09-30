@@ -4,7 +4,10 @@ def verbaliser(fiche: dict) -> str:
     Ne fait AUCUNE supposition : si un fait est absent, le dit explicitement.
     """
     if not fiche["faits"]:
-        return f"Données insuffisantes : {fiche.get('raison', 'aucune information disponible')}."
+        # rstrip : une raison qui finit déjà par un point (ex. message de
+        # centrale d'achat) ne doit pas produire ".." en fin de phrase.
+        raison = (fiche.get("raison") or "aucune information disponible").rstrip(". ")
+        return f"Données insuffisantes : {raison}."
 
     valeurs = {f["cle"]: f["valeur"] for f in fiche["faits"]}
     couverture = fiche["couverture_globale"]

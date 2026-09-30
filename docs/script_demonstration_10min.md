@@ -4,7 +4,7 @@ Déroulé minuté pour la soutenance. Toutes les commandes et sorties ci-dessous
 
 **Objectif du sujet (section 7)** : *« démonstration de 10 minutes : acheteur et objet de marché vers un bloc de décision source »*. Deux moments de démo live, un fil conducteur : partir d'un acheteur et d'un objet de marché, arriver à un bloc de décision, montrer qu'il est sourcé et honnête sur ce qu'il ne sait pas.
 
-**Avant de commencer** : dérouler la checklist de `docs/guide_demonstration.md` (PostgreSQL up, `pytest tests/ -q` → 84 passed, 4 skipped (88 collectés), `harnais_evaluation.py` → 10/10). Terminal déjà ouvert dans le dépôt, `venv` déjà activé.
+**Avant de commencer** : dérouler la checklist de `docs/guide_demonstration.md` (PostgreSQL up, `pytest tests/ -q` → 96 passed, 4 skipped (100 collectés), `harnais_evaluation.py` → 11/11). Terminal déjà ouvert dans le dépôt, `venv` déjà activé.
 
 ---
 
@@ -44,12 +44,12 @@ Sortie attendue (revérifiée le 03/09/2026 — échéance et ordre des concurre
 ```
 ============================================================
 1. Acheteur : COUR DES COMPTES | Objet CPV : 72220000
-2. Sortant probable : GRANT THORNTON (couverture: 100%)
+2. Sortant probable : GRANT THORNTON, confiance élevée (couverture: 100%)
 3. Échéance estimée : 2026-12-21 (dernier marché: 2026-07-21) (couverture: 100%)
 4. Concurrents observés : CTF CONSEIL (3/11 attribution(s)), ERNST ET YOUNG ADVISORY (EY CONSULTING-EY PARTHENON-EY FABERNOVEL) (2/11 attribution(s)), RSM FRANCE (1/11 attribution(s)), ALTERMES (1/11 attribution(s)), PRICEWATERHOUSECOOPERS ADVISORY (1/11 attribution(s)) (couverture: 100%)
-5. Fourchette de prix : 41,864 € — 95,840 € (n=11, indicatif) (couverture: 100%)
+5. Fourchette de prix : 41 864 € — 95 840 € (n=11, indicatif) (couverture: 100%)
 6. Pondération de l'acheteur : non disponible (couverture: 0%)
-7. Historique : 11 marché(s) similaire(s) observé(s)
+7. Historique : 11 marché(s) similaire(s) observé(s) — marché du sortant : 110000288000161000197376 (sur 11 marché(s) en source)
 8. COUVERTURE GLOBALE : 89%
 ============================================================
 ```
@@ -117,14 +117,14 @@ Sortie : `{'siret': '38012986648625', 'siren': '380129866', 'methode': 'investig
 
 **À dire, sans montrer de terminal (gain de temps)** — citer de mémoire ou depuis une slide, vérifiés le 31/08/2026, revérifiés le 02/09/2026 (`docs/rapport_de_stage.md`, section 17) et le 16-17/09/2026 (section 20, après reconstruction complète du pipeline sur la nouvelle machine) :
 
-- Suite de tests : **84 passed, 4 skipped** (88 collectés ; 2 `skipped` dépendent d'une vraie réponse de DuckDuckGo, niveau 5/agent web — aléa réseau, pas un échec ; 2 `skipped` nécessitent une clé Anthropic absente par défaut)
-- Harnais d'évaluation (5 pièges du sujet) : **10/10**
+- Suite de tests : **96 passed, 4 skipped** (100 collectés ; 2 `skipped` dépendent d'une vraie réponse de DuckDuckGo, niveau 5/agent web — aléa réseau, pas un échec ; 2 `skipped` nécessitent une clé Anthropic absente par défaut)
+- Harnais d'évaluation (5 pièges du sujet + 6 contrôles structurels) : **11/11**
 - Précision de résolution d'identité : **92% global / 100% hors homonymie** — **cible sujet (>90%) atteinte**
 - Précision de détection du sortant : **6/6 (100%)** sur cas connus
 - Coût par briefing : **0,00 €** (le bloc de décision n'invoque aucun LLM) — latence **63-303 ms** selon le cas (plage plus large qu'avant : le volume de données a nettement augmenté depuis l'aboutissement de l'import complet, cf. rapport section 20)
 - Contrôle référentiel SIRENE : **8/8**
 
-*(Si le temps le permet, une seule commande pour appuyer : `python scripts/harnais_evaluation.py` → 10/10 en ~5 secondes.)*
+*(Si le temps le permet, une seule commande pour appuyer : `python scripts/harnais_evaluation.py` → 11/11 en ~5 secondes.)*
 
 ## 8:30 – 9:30 — Limites assumées, pas cachées (1 min)
 

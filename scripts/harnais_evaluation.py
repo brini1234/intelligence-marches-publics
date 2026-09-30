@@ -56,6 +56,22 @@ def test_anti_hallucination_bloque_un_chiffre_invente():
     enregistrer("Anti-hallucination -> chiffre inventé rejeté", ok)
 
 
+def test_anti_hallucination_bloque_nom_et_date_inventes():
+    """Sujet, section 4 : tout nom d'entreprise et toute date, pas seulement les nombres —
+    y compris un nom en casse normale et une date recombinée à partir de composantes présentes
+    ailleurs dans la fiche (deux trous réels corrigés le 30/09/2026)."""
+    fiche = construire_fiche_de_faits(ACHETEUR_TEST, CPV_TEST)
+    date_reelle = next(f["valeur"] for f in fiche["faits"] if f["cle"] == "date_dernier_marche")
+    annee, mois, jour = date_reelle.split("-")
+    date_recombinee = f"{annee}-{jour}-{mois}" if int(jour) <= 12 and jour != mois else f"{annee}-{mois}-28"
+    nom = verifier_texte("Concurrents observés : Capgemini, Sopra Steria.", fiche)
+    date = verifier_texte(f"Dernier marché notifié le {date_recombinee}.", fiche)
+    ok = (not nom["valide"] and "Capgemini" in nom["noms_non_justifies"]
+          and not date["valide"] and date_recombinee in date["dates_non_justifiees"])
+    enregistrer("Anti-hallucination -> nom (casse normale) et date inventés rejetés", ok,
+                f"date testée : {date_recombinee}")
+
+
 def test_bloc_de_decision_contient_les_5_elements():
     """Le sujet exige : sortant, concurrents, fourchette de prix, pondération, couverture globale."""
     fiche = construire_fiche_de_faits(ACHETEUR_TEST, CPV_TEST)
@@ -264,6 +280,7 @@ def executer():
     test_acheteur_sans_historique()
     test_cas_riche_produit_un_texte_valide()
     test_anti_hallucination_bloque_un_chiffre_invente()
+    test_anti_hallucination_bloque_nom_et_date_inventes()
     test_bloc_de_decision_contient_les_5_elements()
     test_couverture_est_honnete()
     test_bloc_de_decision_respecte_le_format()

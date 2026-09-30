@@ -47,7 +47,11 @@ import json
 import os
 import sys
 
+from dotenv import load_dotenv
+
 sys.path.append(".")
+
+load_dotenv()
 
 from scripts.verbaliser import verbaliser
 from scripts.verification_mecanique import verifier_texte

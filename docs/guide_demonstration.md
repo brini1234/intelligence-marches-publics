@@ -24,7 +24,7 @@ Cette opération ne touche à aucune donnée ; en cas d'arrêt non propre préc�
 ```bash
 # 2. Suite de tests complète (~1 min)
 pytest tests/ -q
-# attendu (03/09/2026) : 84 passed, 4 skipped (88 collectés) — 2 skipped
+# attendu (30/09/2026) : 96 passed, 4 skipped (100 collectés) — 2 skipped
 # dépendent d'une vraie réponse de DuckDuckGo, niveau 5 de résolution
 # d'identité — aléa réseau, pas un échec (peut repasser "85 passed, 3
 # skipped" selon la réponse de DuckDuckGo au moment de l'exécution) ;
@@ -33,7 +33,7 @@ pytest tests/ -q
 
 # 3. Harnais d'évaluation (pièges de démonstration du sujet)
 python scripts/harnais_evaluation.py
-# attendu : 10/10 automatisés réussis, 0 cas restant (tous les pièges du sujet couverts)
+# attendu : 11/11 automatisés réussis, 0 cas restant (tous les pièges du sujet couverts)
 
 # 4. Contrôle SIRENE
 python scripts/verification_finale_sirene.py
@@ -55,17 +55,17 @@ afficher_bloc(lignes)
 "
 ```
 
-Sortie attendue (8 lignes, ≤ 10 imposées par le sujet ; revérifiée le 03/09/2026) :
+Sortie attendue (8 lignes, ≤ 10 imposées par le sujet ; revérifiée le 30/09/2026 — même résultat avec `python scripts/briefing.py --acheteur "cour des comptes" --cpv 72220000`) :
 
 ```
 ============================================================
 1. Acheteur : COUR DES COMPTES | Objet CPV : 72220000
-2. Sortant probable : GRANT THORNTON (couverture: 100%)
+2. Sortant probable : GRANT THORNTON, confiance élevée (couverture: 100%)
 3. Échéance estimée : 2026-12-21 (dernier marché: 2026-07-21) (couverture: 100%)
 4. Concurrents observés : CTF CONSEIL (3/11 attribution(s)), ERNST ET YOUNG ADVISORY (EY CONSULTING-EY PARTHENON-EY FABERNOVEL) (2/11 attribution(s)), RSM FRANCE (1/11 attribution(s)), ALTERMES (1/11 attribution(s)), PRICEWATERHOUSECOOPERS ADVISORY (1/11 attribution(s)) (couverture: 100%)
-5. Fourchette de prix : 41,864 € — 95,840 € (n=11, indicatif) (couverture: 100%)
+5. Fourchette de prix : 41 864 € — 95 840 € (n=11, indicatif) (couverture: 100%)
 6. Pondération de l'acheteur : non disponible (couverture: 0%)
-7. Historique : 11 marché(s) similaire(s) observé(s)
+7. Historique : 11 marché(s) similaire(s) observé(s) — marché du sortant : 110000288000161000197376 (sur 11 marché(s) en source)
 8. COUVERTURE GLOBALE : 89%
 ============================================================
 ```

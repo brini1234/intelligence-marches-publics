@@ -12,8 +12,8 @@ interroge le référentiel SIRENE déjà chargé en base (tables
 sirene_stock_*) via SQL, jamais l'API SIRENE elle-même. L'API SIRENE
 n'intervient que dans des scripts de pipeline hors ligne
 (completer_via_api_sirene.py, agent_investigation_identite.py en mode
-__main__), jamais dans ce chemin. Aucune passerelle LLM n'est configurée
-dans ce projet (README, rapport de stage) — verbaliser.py/
+__main__), jamais dans ce chemin. La verbalisation par LLM
+(verbaliser_llm.py, optionnelle depuis le 01/09/2026) et verbaliser.py/
 verification_mecanique.py existent mais ne sont PAS appelés par
 construire_bloc_de_decision() (chemin séparé, emprunté par
 harnais_evaluation.py), donc hors du périmètre chronométré ici.
@@ -73,10 +73,11 @@ def mesurer_cout_latence():
     print("=" * 72)
     print("COÛT ET LATENCE PAR BRIEFING")
     print("=" * 72)
-    print("Coût par briefing : 0,00 EUR — par construction, pas une estimation. Aucune "
-          "passerelle LLM n'est configurée dans ce projet et aucun appel réseau ne se "
-          "produit dans le chemin de génération d'un briefing (vérifié par lecture des "
-          "imports, cf. docstring de ce script).")
+    print("Coût par briefing : 0,00 EUR — par construction, pas une estimation. Le chemin "
+          "de génération du bloc de décision n'appelle aucun LLM et ne fait aucun appel "
+          "réseau (vérifié par lecture des imports, cf. docstring de ce script) ; la "
+          "verbalisation par LLM (scripts/verbaliser_llm.py, briefing.py --llm) reste "
+          "optionnelle et hors de ce chemin.")
     print("-" * 72)
 
     for siret, cpv, nom, type_cas in CAS_TEST:

@@ -1,8 +1,19 @@
 import sys
 sys.path.append(".")
 
-from scripts.fiche_de_faits import construire_fiche_de_faits
+from scripts.fiche_de_faits import construire_fiche_de_faits, SCORES_COUVERTURE
 from scripts.schemas import BlocDeDecision
+
+# Couverture du fait titulaire_actuel -> niveau de confiance du sortant
+# (sujet, section 4 : "un sortant probable avec un niveau de confiance et
+# les identifiants des marchés qui l'étayent").
+NIVEAU_CONFIANCE_PAR_SCORE = {score: niveau for niveau, score in SCORES_COUVERTURE.items()}
+
+
+def _montant_fr(montant: float) -> str:
+    """41864.0 -> "41 864" : séparateur de milliers français, jamais "41,864"
+    (qu'un lecteur français lit comme 41 virgule 864)."""
+    return f"{montant:,.0f}".replace(",", " ")
 
 
 def _valider(lignes: list[str]) -> list[str]:
@@ -45,11 +56,21 @@ def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur
     if prix_min is None or prix_max is None:
         fourchette_txt = f"non disponible (n={n}, aucun montant publié sur cette famille)"
     else:
-        fourchette_txt = f"{prix_min:,.0f} € — {prix_max:,.0f} € (n={n}, indicatif)"
+        fourchette_txt = f"{_montant_fr(prix_min)} € — {_montant_fr(prix_max)} € (n={n}, indicatif)"
+
+    confiance = NIVEAU_CONFIANCE_PAR_SCORE.get(valeurs["titulaire_actuel"]["couverture"], "non évaluée")
+    support = fiche.get("marches_support") or []
+    # Total des marchés sources plutôt qu'un "+N autres" : N serait un
+    # nombre dérivé absent de la fiche de faits.
+    sources_txt = (
+        f" — marché du sortant : {support[0]} (sur {len(support)} marché(s) en source)"
+        if support else ""
+    )
 
     lignes = [
         f"Acheteur : {nom_acheteur or siret_acheteur} | Objet CPV : {code_cpv}",
-        f"Sortant probable : {valeurs['titulaire_actuel']['valeur']} (couverture: {pct('titulaire_actuel')})",
+        f"Sortant probable : {valeurs['titulaire_actuel']['valeur']}, confiance {confiance} "
+        f"(couverture: {pct('titulaire_actuel')})",
         f"Échéance estimée : {valeurs['date_expiration_estimee']['valeur']} "
         f"(dernier marché: {valeurs['date_dernier_marche']['valeur']}) "
         f"(couverture: {pct('date_expiration_estimee')})",
@@ -58,7 +79,7 @@ def construire_bloc_de_decision(siret_acheteur: str, code_cpv: str, nom_acheteur
         f"(couverture: {pct('fourchette_prix_min')})",
         f"Pondération de l'acheteur : {valeurs['ponderation_acheteur']['valeur']} "
         f"(couverture: {pct('ponderation_acheteur')})",
-        f"Historique : {valeurs['nombre_marches_historique']['valeur']} marché(s) similaire(s) observé(s)",
+        f"Historique : {valeurs['nombre_marches_historique']['valeur']} marché(s) similaire(s) observé(s){sources_txt}",
         f"COUVERTURE GLOBALE : {fiche['couverture_globale']:.0%}",
     ]
     return _valider(lignes)
